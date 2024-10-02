@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
+import seaborn as sb
 
 from bucketcounter import BucketCounter
 
@@ -65,8 +66,8 @@ num_users = query_int("select count(*) from users where consent='TRUE'")
 print("Num users:", num_users)
 
 num_posts = query_int("select count(*) from posts")
-num_llm = query_int("select COUNT(*) from posts where use_llm='TRUE'")
-num_revtrieval = query_int("select COUNT(*) from posts where use_llm='FALSE'")
+num_llm_posts = query_int("select COUNT(*) from posts where use_llm='TRUE'")
+num_retrieval_posts = query_int("select COUNT(*) from posts where use_llm='FALSE'")
 print("Num posts:", num_posts)
 
 num_llm_reviews = query_int("select count(*) from llm_reviews")
@@ -140,8 +141,8 @@ query_print(
 # This isn't that much higher than 1, suggesting that users aren't clicking
 # multiple links often at all, even if they've clicked one. So either our link
 # relevance or previews are good, or link relevance is trash.
-llm_ctr = llm_clicks / num_llm
-retrieval_ctr = retrieval_clicks / num_revtrieval
+llm_ctr = llm_clicks / num_llm_posts
+retrieval_ctr = retrieval_clicks / num_retrieval_posts
 print("Average clicks per LLM post (LLM CTR):", llm_ctr)
 # So LLM CTR is bringing down the average CTR, not that it matters much given
 # how low it is
@@ -162,9 +163,11 @@ print(f"Retrieval CTR is {retrieval_relative_ctr:.3f}x better than LLM CTR")
 print("\n## Posts")
 
 print("Num posts:", num_posts)
-print("├ LLM:", num_llm)
-print("└ Retrieval:", num_revtrieval)
-print(f"There are {num_llm/num_revtrieval:.3f}x more LLM posts than retrieval posts")
+print("├ LLM:", num_llm_posts)
+print("└ Retrieval:", num_retrieval_posts)
+print(
+    f"There are {num_llm_posts/num_retrieval_posts:.3f}x more LLM posts than retrieval posts"
+)
 # So students VASTLY prefer to see the LLM's answer
 
 query_print(
@@ -183,10 +186,26 @@ query_print(
 
 print("\n## Reviews")
 print(f"Num reviews: {num_reviews}")
+
+query = f"""
+SELECT COUNT(*) FROM posts p
+JOIN llm_reviews r ON p.id = r.post_id AND p.author = r.author
+"""
+num_llm_author_reviews = query_int(query)
+query = f"""
+SELECT COUNT(*) FROM posts p
+JOIN retrieval_reviews r ON p.id = r.post_id AND p.author = r.author
+"""
+num_retrieval_author_reviews = query_int(query)
+
 print(f"├ LLM: {num_llm_reviews} ({num_llm_reviews / num_reviews:.2%})")
+print(f"├─ Author: {num_llm_author_reviews}")
+print(f"├─ Non-author: {num_llm_reviews - num_llm_author_reviews}")
 print(
-    f"└ Retreival: {num_retrieval_reviews} ({num_retrieval_reviews / num_reviews:.2%})"
+    f"├ Retrieval: {num_retrieval_reviews} ({num_retrieval_reviews / num_reviews:.2%})"
 )
+print(f"├─ Author: {num_retrieval_author_reviews}")
+print(f"└─ Non-author: {num_retrieval_reviews - num_retrieval_author_reviews}")
 
 query = """
 select AVG(review_count) from (
@@ -203,8 +222,66 @@ select AVG(review_count) from (
 query_print("Average num reviews per retrieval post", query)
 
 # Both types of reviews are pretty close to 1 review per post, which makes sense
-# TODO: Check if the author is generally the sole review
-# TODO: Check the average number of non-author reviews
+
+query = """
+SELECT COUNT(DISTINCT post_id) AS posts_with_reviews
+FROM (
+    SELECT p.id AS post_id
+    FROM posts p
+    JOIN llm_reviews lr ON p.id = lr.post_id
+
+    UNION
+
+    SELECT p.id AS post_id
+    FROM posts p
+    JOIN retrieval_reviews rr ON p.id = rr.post_id
+)
+"""
+num_reviewed_posts = query_int(query)
+percent_reviewed_posts = num_reviewed_posts / num_posts
+print(
+    f"Percent posts with >=1 review: {percent_reviewed_posts:.2%} ({num_reviewed_posts})"
+)
+
+for review_type, total_posts in [("retrieval", num_posts), ("llm", num_llm_posts)]:
+    query = f"""
+    SELECT COUNT(DISTINCT post_id)
+    FROM (
+        SELECT p.id AS post_id
+        FROM posts p
+        JOIN {review_type}_reviews r ON p.id = r.post_id
+    );
+    """
+    num_reviewed_posts = query_int(query)
+    percent_reviewed_posts = num_reviewed_posts / total_posts
+    print(
+        f"Percent {review_type} posts with >=1 review: {percent_reviewed_posts:.2%} ({num_reviewed_posts})"
+    )
+
+    query = f"""
+    SELECT COUNT(*) FROM posts p
+    JOIN {review_type}_reviews r ON p.id = r.post_id AND p.author = r.author
+    """
+    num_author_reviewed = query_int(query)
+    percent_author_reviewed = num_author_reviewed / total_posts
+    print(
+        f"Percent {review_type} posts with an author review: {percent_author_reviewed:.2%} ({num_author_reviewed})"
+    )
+    query = f"""
+    SELECT COUNT(*) from (
+        SELECT COUNT(DISTINCT p.id) FROM posts p
+        JOIN {review_type}_reviews r ON p.id = r.post_id
+        GROUP BY p.id
+        HAVING COUNT(*) = 1 AND r.author = p.author
+    )
+    """
+
+    num_sole_author_reviewed = query_int(query)
+    num_non_author_reviewed = num_reviewed_posts - num_sole_author_reviewed
+    percent_sole_author_reviewed = num_sole_author_reviewed / total_posts
+    print(
+        f"Percent {review_type} posts with sole author review: {percent_sole_author_reviewed:.2%} ({num_sole_author_reviewed})"
+    )
 
 # Average scores for LLM
 query_print_averages(LLM_COLS, "llm_reviews")
@@ -239,9 +316,134 @@ def graph_review_count(
     _ = plt.show()
 
 
-# TODO: Scatter plot of number of questions vs. number of reviews
-# TODO: Scatter plot of number of questions vs. helpfulness, relevance, etc.
-#       SELECT * from "llm_reviews" GROUP BY post_id having count(*) > 1 LIMIT 200;
+query = """
+SELECT 
+    -- User info
+    -- u.id AS user_id, 
+    COUNT(DISTINCT p.id) AS post_count,
+    COUNT(DISTINCT lr.rowid) AS llm_review_count,
+    COUNT(DISTINCT rr.rowid) AS retrieval_review_count,
+
+    -- Average LLM review stats
+    AVG(lr.helpfulness) AS avg_lhelpfulness,
+    AVG(lr.relevance) AS avg_lrelevance,
+    AVG(lr.correctness) AS avg_lcorrectness,
+
+    -- Average retrieval review stats
+    AVG(rr.helpfulness) AS avg_rhelpfulness,
+    AVG(rr.relevance) AS avg_rrelevance
+
+FROM users u
+LEFT JOIN posts p ON u.id = p.author
+LEFT JOIN llm_reviews lr ON u.id = lr.author
+LEFT JOIN retrieval_reviews rr ON u.id = rr.author
+WHERE u.consent="TRUE"
+GROUP BY u.id
+ORDER BY post_count ASC
+"""
+per_user_df = pd.read_sql(query, conn)
+per_user_df["total_review_count"] = (
+    per_user_df["llm_review_count"] + per_user_df["retrieval_review_count"]
+)
+# To trim the single outlier, just a random student who liked the tool i guess
+# Doesn't make a difference in the result (i.e. p-value) though
+# questions_v_reviews_df = questions_v_reviews_df[questions_v_reviews_df["post_count"] > 30]
+
+linreg = stats.linregress(
+    per_user_df["post_count"],
+    per_user_df["total_review_count"],
+    alternative="greater",
+)
+print("Num posts vs num reviews:", linreg)
+
+if SHOW_GRAPHS:
+    per_user_df.plot(
+        x="post_count",
+        y="total_review_count",
+        kind="scatter",
+        title="Number of Posts vs. Number of Reviews",
+        xlabel="Number of Posts",
+        ylabel="Number of Reviews",
+    )
+    x = per_user_df["post_count"].sort_values()
+    plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
+    plt.show()
+
+# So there's a statistically significant correlation b/t the number of posts and
+# number of reviews a student left, which makes sense: more opportunity to
+# review a post if you make a bunch of them, since we don't allow duplicates
+# and people preferred to review their own posts over those of others
+
+
+def prmatrix(df: pd.DataFrame, out_filename: str):
+    pvalues = df.corr(method=lambda x, y: stats.spearmanr(x, y).pvalue) - np.eye(
+        len(df.columns)
+    )
+    rvalues = df.corr(method=lambda x, y: stats.spearmanr(x, y).statistic)
+
+    # accept_pvalues = pvalues.map(lambda x: "*" if 0 < x <= 0.05 else "")
+    accept_pvalues = pvalues[(0 < pvalues) & (pvalues < 0.05)]
+    accept_rvalues = rvalues[pvalues < 0.05]
+    with open(out_filename, "w") as f:
+        f.write("P values:\n")
+        f.write(pvalues.to_string())
+        f.write("\n\n")
+        f.write("Filtered P values:\n")
+        f.write(accept_pvalues.to_string())
+        f.write("\n\n")
+        f.write("Filtered R values:\n")
+        f.write(accept_rvalues.to_string())
+
+    if SHOW_GRAPHS:
+        ax = sb.heatmap(pvalues)
+        plt.title("P-values")
+        plt.xticks(rotation=45, ha="right")
+        plt.show()
+
+        ax = sb.heatmap(accept_rvalues, cmap="Greens", vmin=0)
+        plt.title("Filtered R-values")
+        plt.xticks(rotation=45, ha="right")
+        plt.show()
+
+
+# Per-user significance stats
+# prmatrix(per_user_df, "per-user-matrix.txt")
+# So the number of posts and reviews have no statistically significant
+# influence over the ratings that people are giving, as opposed to time, which
+# did improve the ratings people were giving.
+# Can also extract some info from signficance of averages, but it's better to
+# just look at the data directly over the averages, since these represent a
+# per-user info (e.g. users who rate one LLM category highly are likely to rate
+# the others highly as well)
+# -> With the exception of retrieval relevance to LLM helpfulness, there is a
+# statistically significant positive correlation between a user's average
+# rating between statistics. This makes me think that LLM hallucinations makes
+# these things irrelevant.
+
+# Is a post whose retrieval has been rated as relevant have better LLM stats?
+query = """
+SELECT 
+    -- LLM
+    lr.helpfulness as lhelpfulness, 
+    lr.relevance as lrelevance, 
+    lr.correctness as lcorrectness, 
+    -- Retrieval
+    rr.relevance as rrelevance, 
+    rr.helpfulness as rhelpfulness 
+FROM llm_reviews lr
+JOIN retrieval_reviews rr ON lr.post_id = rr.post_id;
+"""
+llm_retrieval_reviews = pd.read_sql(query, conn)
+prmatrix(llm_retrieval_reviews, "llm-and-retrieval-reviews.txt")
+# So everything is statistically significantly positively correlated, although
+# retrieval relevance to LLM stats aren't *as* signficant as the rest of
+# them. They're all a positive correlation though, which makes sense.
+# - Isn't that much connection between retrieval stats and LLM stats, just a
+# slight positive correlation relative to others
+# - Strongest correlation is LLM correctness<->helpfulness, which makes sense
+# since incorrect LLM answers are worthless
+# - LLM helpfulness<->relevance is also high
+# TODO: Talk to Dr. Back about this
 
 query = """
 SELECT 
