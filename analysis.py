@@ -73,7 +73,7 @@ print("Num posts:", num_posts)
 num_llm_reviews = query_int("select count(*) from llm_reviews")
 num_retrieval_reviews = query_int("select count(*) from retrieval_reviews")
 num_reviews = num_llm_reviews + num_retrieval_reviews
-print(f"Num reviews: f{num_reviews}")
+print(f"Num reviews: {num_reviews}")
 
 num_clicks = query_int("select count(*) from clicks")
 print("Total link clicks", num_clicks)
@@ -474,7 +474,8 @@ for data, name, bucket in [
 ]:
     print(f"### {name} Review Info")
     # Number of unique authors who left reviews
-    print(f"- Num authors:", len(data))
+    num_authors = sum(1 for d in data if d > 0)
+    print(f"- Num authors:", num_authors)
 
     # Reviews per author
     print(f"- Average per user:", np.average(data))
