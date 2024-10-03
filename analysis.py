@@ -375,7 +375,7 @@ if SHOW_GRAPHS:
 # and people preferred to review their own posts over those of others
 
 
-def prmatrix(df: pd.DataFrame, out_filename: str):
+def prmatrix(df: pd.DataFrame, graph_title: str, out_filename: str):
     pvalues = df.corr(method=lambda x, y: stats.spearmanr(x, y).pvalue) - np.eye(
         len(df.columns)
     )
@@ -396,18 +396,18 @@ def prmatrix(df: pd.DataFrame, out_filename: str):
 
     if SHOW_GRAPHS:
         ax = sb.heatmap(pvalues)
-        plt.title("P-values")
+        plt.title(f"{graph_title} P-values")
         plt.xticks(rotation=45, ha="right")
         plt.show()
 
         ax = sb.heatmap(accept_rvalues, cmap="Greens", vmin=0)
-        plt.title("Filtered R-values")
+        plt.title(f"{graph_title} Filtered R-values")
         plt.xticks(rotation=45, ha="right")
         plt.show()
 
 
 # Per-user significance stats
-# prmatrix(per_user_df, "per-user-matrix.txt")
+prmatrix(per_user_df, "Per-user Statistics", "per-user-matrix.txt")
 # So the number of posts and reviews have no statistically significant
 # influence over the ratings that people are giving, as opposed to time, which
 # did improve the ratings people were giving.
@@ -434,7 +434,7 @@ FROM llm_reviews lr
 JOIN retrieval_reviews rr ON lr.post_id = rr.post_id;
 """
 llm_retrieval_reviews = pd.read_sql(query, conn)
-prmatrix(llm_retrieval_reviews, "llm-and-retrieval-reviews.txt")
+prmatrix(llm_retrieval_reviews, "Review Statistics", "llm-and-retrieval-reviews.txt")
 # So everything is statistically significantly positively correlated, although
 # retrieval relevance to LLM stats aren't *as* signficant as the rest of
 # them. They're all a positive correlation though, which makes sense.
@@ -468,11 +468,11 @@ num_total_reviews_by_user: tuple[int, ...]
 )
 
 for data, name, bucket in [
-    (num_retrieval_reviews_by_user, "retrieval", [(6, 8)]),
-    (num_llm_reviews_by_user, "llm", [(10, 12)]),
-    (num_total_reviews_by_user, "total", [(1, 2), (12, 15)]),
+    (num_retrieval_reviews_by_user, "Retrieval", [(6, 8)]),
+    (num_llm_reviews_by_user, "LLM", [(10, 12)]),
+    (num_total_reviews_by_user, "Total", [(1, 2), (12, 15)]),
 ]:
-    print(f"### {name.title()} review info")
+    print(f"### {name} Review Info")
     # Number of unique authors who left reviews
     print(f"- Num authors:", len(data))
 
@@ -483,7 +483,7 @@ for data, name, bucket in [
     if SHOW_GRAPHS:
         graph_review_count(
             data,
-            f"Number of {name} reviews per user",
+            f"Number of {name} Reviews Per User",
             bucket,
         )
 
@@ -544,7 +544,7 @@ for name, df, cols in [
 
         if SHOW_GRAPHS:
             color = ax.get_lines()[i].get_color()
-            y = slope * window_averages.index + intercept
+            y = linreg.slope * window_averages.index + linreg.intercept
             ax.plot(window_averages.index, y, color=color, linestyle="dashed")
 
     if SHOW_GRAPHS:
@@ -586,7 +586,7 @@ for col in LLM_COLS:
             x="total_time",
             y=col,
             kind="scatter",
-            title=f"Total Retrieval and Generation Time vs. {col.title()}",
+            title=f"Combined Retrieval and Generation Time vs. {col.title()}",
             xlabel="Total Time",
             ylabel=col.title(),
         )
