@@ -13,8 +13,8 @@ from bucketcounter import BucketCounter
 plt.style.use("seaborn-v0_8-paper")
 
 conn = sqlite3.connect("./linkdata.db")
-# SHOW_GRAPHS = True
-SHOW_GRAPHS = False
+SHOW_GRAPHS = True
+# SHOW_GRAPHS = False
 
 RETRIEVAL_COLS = ["relevance", "helpfulness"]
 LLM_COLS = RETRIEVAL_COLS + ["correctness"]
@@ -187,12 +187,12 @@ query_print(
 print("\n## Reviews")
 print(f"Num reviews: {num_reviews}")
 
-query = f"""
+query = """
 SELECT COUNT(*) FROM posts p
 JOIN llm_reviews r ON p.id = r.post_id AND p.author = r.author
 """
 num_llm_author_reviews = query_int(query)
-query = f"""
+query = """
 SELECT COUNT(*) FROM posts p
 JOIN retrieval_reviews r ON p.id = r.post_id AND p.author = r.author
 """
@@ -395,12 +395,12 @@ def prmatrix(df: pd.DataFrame, graph_title: str, out_filename: str):
         f.write(accept_rvalues.to_string())
 
     if SHOW_GRAPHS:
-        ax = sb.heatmap(pvalues)
+        _ = sb.heatmap(pvalues)
         plt.title(f"{graph_title} P-values")
         plt.xticks(rotation=45, ha="right")
         plt.show()
 
-        ax = sb.heatmap(accept_rvalues, cmap="Greens", vmin=0)
+        _ = sb.heatmap(accept_rvalues, cmap="Greens", vmin=0)
         plt.title(f"{graph_title} Filtered R-values")
         plt.xticks(rotation=45, ha="right")
         plt.show()
@@ -475,11 +475,11 @@ for data, name, bucket in [
     print(f"### {name} Review Info")
     # Number of unique authors who left reviews
     num_authors = sum(1 for d in data if d > 0)
-    print(f"- Num authors:", num_authors)
+    print("- Num authors:", num_authors)
 
     # Reviews per author
-    print(f"- Average per user:", np.average(data))
-    print(f"- Stddev per user:", np.std(data))
+    print("- Average per user:", np.average(data))
+    print("- Stddev per user:", np.std(data))
 
     if SHOW_GRAPHS:
         graph_review_count(
@@ -552,13 +552,16 @@ for name, df, cols in [
         plt.show()
 
 # LLM
-# - All have an extremely small p-value, so slope is definitely positive, meaning that students were getting better over time.
+# - All have an extremely small p-value, so slope is definitely positive,
+# meaning that students were getting better over time.
 # - The slope of correctness > helpefulness > relevance
 # - The actual averages are correctness > relevance > helpfulness though
 # Retrieval
 # - Again, all have small p-values, so slopes are definitely correct
 # - Slope for relevance is negative, slope for helpfulness is positive
 # - Helpfulness started low, but was matching than relevance by the end
+# TODO: Talk with Dr. Back about whether this proves students were getting
+# better with the tool
 
 print("\n## Time vs Ratings")
 
