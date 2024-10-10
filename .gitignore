@@ -175,6 +175,12 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
+# macOS files
 .DS_Store
 
+# Database files
+*.db
+
+# Output
 out/
+
