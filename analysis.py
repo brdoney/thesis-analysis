@@ -3,6 +3,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any  # type: ignore[reportAny]
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,9 +14,12 @@ from bucketcounter import BucketCounter
 
 plt.style.use("seaborn-v0_8-paper")
 
+matplotlib.rcParams["figure.dpi"] = 300
+matplotlib.rcParams["savefig.bbox"] = "tight"
+
 conn = sqlite3.connect("./linkdata.db")
-SHOW_GRAPHS = True
-# SHOW_GRAPHS = False
+# SHOW_GRAPHS = True
+SHOW_GRAPHS = False
 
 RETRIEVAL_COLS = ["relevance", "helpfulness"]
 LLM_COLS = RETRIEVAL_COLS + ["correctness"]
@@ -129,7 +133,10 @@ _ = plt.bar(range(len(clicks)), clicks, tick_label=users)
 _ = plt.title("Number of Link Clicks Per User")
 _ = plt.ylabel("Number of Link Clicks")
 _ = plt.xlabel("User ID")
-_ = plt.xticks(rotation=90)
+# We don't really care about the exact user ID
+_ = plt.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+# If we did though, this is good:
+# _ = plt.xticks(rotation=90, fontsize=7)
 plt.savefig(OUT_DIR / "Clicks Per User.png")
 
 if SHOW_GRAPHS:
