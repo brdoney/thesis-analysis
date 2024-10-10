@@ -1,5 +1,6 @@
-from collections.abc import Iterable
 import sqlite3
+from collections.abc import Iterable
+from pathlib import Path
 from typing import Any  # type: ignore[reportAny]
 
 import matplotlib.pyplot as plt
@@ -18,6 +19,9 @@ SHOW_GRAPHS = True
 
 RETRIEVAL_COLS = ["relevance", "helpfulness"]
 LLM_COLS = RETRIEVAL_COLS + ["correctness"]
+
+OUT_DIR = Path("./out")
+OUT_DIR.mkdir(exist_ok=True)
 
 
 def query_list(query: str) -> list[Any]:
@@ -121,13 +125,17 @@ print(
 )
 # So about a quarter of students are clicking on links
 
+_ = plt.bar(range(len(clicks)), clicks, tick_label=users)
+_ = plt.title("Number of Link Clicks Per User")
+_ = plt.ylabel("Number of Link Clicks")
+_ = plt.xlabel("User ID")
+_ = plt.xticks(rotation=90)
+plt.savefig(OUT_DIR / "Clicks Per User.png")
+
 if SHOW_GRAPHS:
-    _ = plt.title("Number of Link Clicks Per User")
-    _ = plt.bar(range(len(clicks)), clicks, tick_label=users)
-    _ = plt.ylabel("Number of Link Clicks")
-    _ = plt.xlabel("User ID")
-    _ = plt.xticks(rotation=90)
-    _ = plt.show()
+    plt.show()
+
+plt.close()
 
 
 print("### Per Post")
@@ -313,7 +321,12 @@ def graph_review_count(
         wedgeprops=dict(linewidth=1, edgecolor="w"),
     )
     _ = plt.title(title)
-    _ = plt.show()
+    plt.savefig(OUT_DIR / f"{title}.png")
+
+    if SHOW_GRAPHS:
+        plt.show()
+
+    plt.close()
 
 
 query = """
@@ -356,18 +369,22 @@ linreg = stats.linregress(
 )
 print("Num posts vs num reviews:", linreg)
 
+per_user_df.plot(
+    x="post_count",
+    y="total_review_count",
+    kind="scatter",
+    title="Number of Posts vs. Number of Reviews",
+    xlabel="Number of Posts",
+    ylabel="Number of Reviews",
+)
+x = per_user_df["post_count"].sort_values()
+plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
+plt.savefig(OUT_DIR / "Posts vs Reviews.png")
+
 if SHOW_GRAPHS:
-    per_user_df.plot(
-        x="post_count",
-        y="total_review_count",
-        kind="scatter",
-        title="Number of Posts vs. Number of Reviews",
-        xlabel="Number of Posts",
-        ylabel="Number of Reviews",
-    )
-    x = per_user_df["post_count"].sort_values()
-    plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
     plt.show()
+
+plt.close()
 
 # So there's a statistically significant correlation b/t the number of posts and
 # number of reviews a student left, which makes sense: more opportunity to
@@ -384,26 +401,30 @@ def prmatrix(df: pd.DataFrame, graph_title: str, out_filename: str):
     # accept_pvalues = pvalues.map(lambda x: "*" if 0 < x <= 0.05 else "")
     accept_pvalues = pvalues[(0 < pvalues) & (pvalues < 0.05)]
     accept_rvalues = rvalues[pvalues < 0.05]
-    with open(out_filename, "w") as f:
-        f.write("P values:\n")
-        f.write(pvalues.to_string())
-        f.write("\n\n")
-        f.write("Filtered P values:\n")
-        f.write(accept_pvalues.to_string())
-        f.write("\n\n")
-        f.write("Filtered R values:\n")
-        f.write(accept_rvalues.to_string())
+    with open(OUT_DIR / out_filename, "w") as f:
+        _ = f.write(
+            f"P values:\n{pvalues.to_string()}\n\nFiltered P values:\n{accept_pvalues.to_string()}\n\nFiltered R values:\n{accept_rvalues.to_string()}"
+        )
+
+    _ = sb.heatmap(pvalues)
+    _ = plt.title(f"{graph_title} P-values")
+    _ = plt.xticks(rotation=45, ha="right")
+    plt.savefig(OUT_DIR / f"{graph_title} P-values.png")
 
     if SHOW_GRAPHS:
-        _ = sb.heatmap(pvalues)
-        plt.title(f"{graph_title} P-values")
-        plt.xticks(rotation=45, ha="right")
         plt.show()
 
-        _ = sb.heatmap(accept_rvalues, cmap="Greens", vmin=0)
-        plt.title(f"{graph_title} Filtered R-values")
-        plt.xticks(rotation=45, ha="right")
+    plt.close()
+
+    _ = sb.heatmap(accept_rvalues, cmap="Greens", vmin=0)
+    _ = plt.title(f"{graph_title} Filtered R-values")
+    _ = plt.xticks(rotation=45, ha="right")
+    plt.savefig(OUT_DIR / f"{graph_title} R-values.png")
+
+    if SHOW_GRAPHS:
         plt.show()
+
+    plt.close()
 
 
 # Per-user significance stats
@@ -481,12 +502,11 @@ for data, name, bucket in [
     print("- Average per user:", np.average(data))
     print("- Stddev per user:", np.std(data))
 
-    if SHOW_GRAPHS:
-        graph_review_count(
-            data,
-            f"Number of {name} Reviews Per User",
-            bucket,
-        )
+    graph_review_count(
+        data,
+        f"Number of {name} Reviews Per User",
+        bucket,
+    )
 
 num_5plus_users = sum(1 for review in num_total_reviews_by_user if review >= 5)
 print(
@@ -506,8 +526,8 @@ retrieval_df = pd.read_sql(  # pyright: ignore[reportUnknownMemberType]
 
 WINDOW_LEN = 100
 for name, df, cols in [
-    ("llm_reviews", llm_df, LLM_COLS),
-    ("retrieval_reviews", retrieval_df, RETRIEVAL_COLS),
+    ("LLM", llm_df, LLM_COLS),
+    ("Retrieval", retrieval_df, RETRIEVAL_COLS),
 ]:
     averages = []
     for i in range(len(df) - WINDOW_LEN + 1):
@@ -515,15 +535,14 @@ for name, df, cols in [
         averages.append(rows.mean())
     window_averages = pd.DataFrame(averages)
 
-    if SHOW_GRAPHS:
-        ax = window_averages.plot(
-            title=f"Rolling Average of {WINDOW_LEN} Reviews",
-            ylabel="Average Value",
-            xlabel="Window Starting Point (Review Index)",
-            xticks=range(
-                0, len(window_averages), WINDOW_LEN
-            ),  # Set xticks every WIDNOW_LEN points
-        )
+    ax = window_averages.plot(
+        title=f"Rolling Average of {WINDOW_LEN} Reviews",
+        ylabel="Average Value",
+        xlabel="Window Starting Point (Review Index)",
+        xticks=range(
+            0, len(window_averages), WINDOW_LEN
+        ),  # Set xticks every WIDNOW_LEN points
+    )
 
     print(f"T-test and p-values for {name} rolling averages:")
     for i, col in enumerate(cols):
@@ -535,7 +554,7 @@ for name, df, cols in [
 
         alternative = "greater"
         # This combo is the only negative slope
-        if name == "retrieval_reviews" and col == "relevance":
+        if name == "Retrieval" and col == "relevance":
             alternative = "less"
 
         linreg = stats.linregress(
@@ -543,13 +562,16 @@ for name, df, cols in [
         )
         print("  ", linreg)
 
-        if SHOW_GRAPHS:
-            color = ax.get_lines()[i].get_color()
-            y = linreg.slope * window_averages.index + linreg.intercept
-            ax.plot(window_averages.index, y, color=color, linestyle="dashed")
+        color = ax.get_lines()[i].get_color()
+        y = linreg.slope * window_averages.index + linreg.intercept
+        ax.plot(window_averages.index, y, color=color, linestyle="dashed")
+
+    plt.savefig(OUT_DIR / f"Rolling Avg {name}.png")
 
     if SHOW_GRAPHS:
         plt.show()
+
+    plt.close()
 
 # LLM
 # - All have an extremely small p-value, so slope is definitely positive,
@@ -585,18 +607,23 @@ for col in LLM_COLS:
 
     print("-", col, linreg, spearman)
 
+    _ = llm_gen_df.plot(
+        x="total_time",
+        y=col,
+        kind="scatter",
+        title=f"Combined Retrieval and Generation Time vs. {col.title()}",
+        xlabel="Total Time",
+        ylabel=col.title(),
+    )
+    # NOTE: These lines have no statistical significance and should probably be removed
+    _ = plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
+
+    plt.savefig(OUT_DIR / f"LLM Time vs {col.title()}.png")
+
     if SHOW_GRAPHS:
-        llm_gen_df.plot(
-            x="total_time",
-            y=col,
-            kind="scatter",
-            title=f"Combined Retrieval and Generation Time vs. {col.title()}",
-            xlabel="Total Time",
-            ylabel=col.title(),
-        )
-        # NOTE: These lines have no statistical significance and should probably be removed
-        plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
         plt.show()
+
+    plt.close()
 
 # So total time doesn't significantly correlate with any of the ratings, which
 # makes sense since longer time doesn't really mean much when we're streaming
@@ -620,18 +647,22 @@ for col in RETRIEVAL_COLS:
 
     print("-", col, linreg, spearman)
 
+    _ = retrieval_gen_df.plot(
+        x="retrieval_time",
+        y=col,
+        kind="scatter",
+        title=f"Retrieval Time vs. {col.title()}",
+        xlabel="Retrieval Time",
+        ylabel=col.title(),
+    )
+    # NOTE: These lines have almost no statistical significance and should probably be removed
+    _ = plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
+    plt.savefig(OUT_DIR / f"Retrieval Time vs {col.title()}.png")
+
     if SHOW_GRAPHS:
-        retrieval_gen_df.plot(
-            x="retrieval_time",
-            y=col,
-            kind="scatter",
-            title=f"Retrieval Time vs. {col.title()}",
-            xlabel="Retrieval Time",
-            ylabel=col.title(),
-        )
-        # NOTE: These lines have almost no statistical significance and should probably be removed
-        plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
         plt.show()
+
+    plt.close()
 
 # So the closest to being statistically significant is helpfulness, which had a
 # p-value of 0.066. But ultimately, none of the lines here are statistically
