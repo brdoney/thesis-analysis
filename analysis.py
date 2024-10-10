@@ -27,6 +27,16 @@ LLM_COLS = RETRIEVAL_COLS + ["correctness"]
 OUT_DIR = Path("./out")
 OUT_DIR.mkdir(exist_ok=True)
 
+# Possible options for each category
+HELPFULNESS_OPTIONS = [2, 1, 0, -1, -2]
+CORRECTNESS_OPTIONS = [3, 2, 1, 0, -1, -2, -3]
+RELEVANCE_OPTIONS = [2, 1, 0, -1, -2]
+RATINGS_OPTIONS = {
+    "relevance": RELEVANCE_OPTIONS,
+    "correctness": CORRECTNESS_OPTIONS,
+    "helpfulness": HELPFULNESS_OPTIONS,
+}
+
 
 def query_list(query: str) -> list[Any]:
     return conn.execute(query).fetchall()
@@ -326,6 +336,7 @@ def graph_review_count(
         autopct=autopct_func,
         pctdistance=0.75,
         wedgeprops=dict(linewidth=1, edgecolor="w"),
+        textprops=dict(fontsize=6),
     )
     _ = plt.title(title)
     plt.savefig(OUT_DIR / f"{title}.png")
@@ -452,12 +463,12 @@ prmatrix(per_user_df, "Per-user Statistics", "per-user-matrix.txt")
 query = """
 SELECT 
     -- LLM
-    lr.helpfulness as lhelpfulness, 
-    lr.relevance as lrelevance, 
-    lr.correctness as lcorrectness, 
+    lr.helpfulness as `LLM Helpfulness`, 
+    lr.relevance as `LLM Relevance`, 
+    lr.correctness as `LLM Correctness`, 
     -- Retrieval
-    rr.relevance as rrelevance, 
-    rr.helpfulness as rhelpfulness 
+    rr.relevance as `Retrieval Relevance`, 
+    rr.helpfulness as `Retrieval helpfulness`
 FROM llm_reviews lr
 JOIN retrieval_reviews rr ON lr.post_id = rr.post_id;
 """
@@ -545,7 +556,7 @@ for name, df, cols in [
     ax = window_averages.plot(
         title=f"Rolling Average of {WINDOW_LEN} Reviews",
         ylabel="Average Value",
-        xlabel="Window Starting Point (Review Index)",
+        xlabel="Window Start Index",
         xticks=range(
             0, len(window_averages), WINDOW_LEN
         ),  # Set xticks every WIDNOW_LEN points
@@ -619,11 +630,12 @@ for col in LLM_COLS:
         y=col,
         kind="scatter",
         title=f"Combined Retrieval and Generation Time vs. {col.title()}",
-        xlabel="Total Time",
+        xlabel="Time (s)",
         ylabel=col.title(),
     )
     # NOTE: These lines have no statistical significance and should probably be removed
     _ = plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
+    _ = plt.yticks(RATINGS_OPTIONS[col])
 
     plt.savefig(OUT_DIR / f"LLM Time vs {col.title()}.png")
 
@@ -659,11 +671,13 @@ for col in RETRIEVAL_COLS:
         y=col,
         kind="scatter",
         title=f"Retrieval Time vs. {col.title()}",
-        xlabel="Retrieval Time",
+        xlabel="Retrieval Time (s)",
         ylabel=col.title(),
     )
     # NOTE: These lines have almost no statistical significance and should probably be removed
     _ = plt.plot(x, linreg.slope * x + linreg.intercept, linestyle="dashed")
+    _ = plt.yticks(RATINGS_OPTIONS[col])
+
     plt.savefig(OUT_DIR / f"Retrieval Time vs {col.title()}.png")
 
     if SHOW_GRAPHS:
