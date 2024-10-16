@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import seaborn as sb
+import seaborn as sns
 
 from bucketcounter import BucketCounter
 
@@ -110,12 +110,32 @@ def pie_chart(
     plt.close()
 
 
+def violin_plot(df: pd.DataFrame, title: str) -> None:
+    # bw_adjust to decrease smoothing (since data is discrete)
+    ax = sns.violinplot(
+        data=df, bw_adjust=0.5, linewidth=1, formatter=lambda s: s.title()
+    )
+    # Make background colors less harsh
+    plt.setp(ax.collections, alpha=0.75)
+
+    _ = plt.title(title)
+
+    plt.savefig(OUT_DIR / f"{title}.png")
+
+    if SHOW_GRAPHS:
+        plt.show()
+
+    plt.close()
+
+
 def graph_reviews(cols: list[str], table: str, title: str) -> None:
     query = f"select {','.join(cols)} from {table}"
-    res: list[tuple[int, ...]] = conn.execute(query).fetchall()
-    for i, col in enumerate(cols):
-        vals = [row[i] for row in res]
-        pie_chart(vals, f"{title} {col.title()}", [], RATINGS_RANGES[col])
+    df = pd.read_sql(query, conn)
+
+    for col in cols:
+        pie_chart(df[col], f"{title} {col.title()}", [], RATINGS_RANGES[col])
+
+    violin_plot(df, f"{title} Ratings")
 
 
 def flatten[T](items: list[tuple[T]]) -> list[T]:
@@ -454,7 +474,7 @@ def prmatrix(df: pd.DataFrame, graph_title: str, out_filename: str):
             f"P values:\n{pvalues.to_string()}\n\nFiltered P values:\n{accept_pvalues.to_string()}\n\nFiltered R values:\n{accept_rvalues.to_string()}"
         )
 
-    _ = sb.heatmap(pvalues)
+    _ = sns.heatmap(pvalues)
     _ = plt.title(f"{graph_title} P-values")
     _ = plt.xticks(rotation=45, ha="right")
     plt.savefig(OUT_DIR / f"{graph_title} P-values.png")
@@ -464,7 +484,7 @@ def prmatrix(df: pd.DataFrame, graph_title: str, out_filename: str):
 
     plt.close()
 
-    _ = sb.heatmap(accept_rvalues, cmap="Greens", vmin=0)
+    _ = sns.heatmap(accept_rvalues, cmap="Greens", vmin=0)
     _ = plt.title(f"{graph_title} Filtered R-values")
     _ = plt.xticks(rotation=45, ha="right")
     plt.savefig(OUT_DIR / f"{graph_title} R-values.png")
