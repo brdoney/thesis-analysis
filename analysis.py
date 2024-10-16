@@ -36,6 +36,9 @@ RATINGS_OPTIONS = {
     "correctness": CORRECTNESS_OPTIONS,
     "helpfulness": HELPFULNESS_OPTIONS,
 }
+RATINGS_RANGES = {
+    name: (min(vals), max(vals)) for name, vals in RATINGS_OPTIONS.items()
+}
 
 
 def query_list(query: str) -> list[Any]:
@@ -67,6 +70,52 @@ def query_print_averages(cols: list[str], table: str) -> None:
     print(f"### Average values for {table}")
     for col, val in zip(cols, res):
         print(f"- {col.title()}: {val}")
+
+
+def pie_chart(
+    data: Iterable[int],
+    title: str,
+    buckets: list[tuple[int, int]] | None = None,
+    data_range: tuple[int, int] | None = None,
+) -> None:
+    counter = BucketCounter(data, buckets)
+
+    num_counted_users = counter.total()
+    # counter["0"] = num_users - num_counted_users
+
+    labels, counts = counter.sorted_items()
+
+    if data_range is not None:
+        title += f" ({data_range[0]} to {data_range[1]})"
+
+    def autopct_func(percent: float):
+        count = round(percent / 100 * num_counted_users)
+        return f"{percent:1.2f}% ({count})"
+
+    _ = plt.pie(
+        counts,
+        labels=labels,
+        autopct=autopct_func,
+        pctdistance=0.75,
+        wedgeprops=dict(linewidth=1, edgecolor="w"),
+        textprops=dict(fontsize=6),
+    )
+
+    _ = plt.title(title)
+    plt.savefig(OUT_DIR / f"{title}.png")
+
+    if SHOW_GRAPHS:
+        plt.show()
+
+    plt.close()
+
+
+def graph_reviews(cols: list[str], table: str, title: str) -> None:
+    query = f"select {','.join(cols)} from {table}"
+    res: list[tuple[int, ...]] = conn.execute(query).fetchall()
+    for i, col in enumerate(cols):
+        vals = [row[i] for row in res]
+        pie_chart(vals, f"{title} {col.title()}", [], RATINGS_RANGES[col])
 
 
 def flatten[T](items: list[tuple[T]]) -> list[T]:
@@ -223,14 +272,25 @@ JOIN retrieval_reviews r ON p.id = r.post_id AND p.author = r.author
 """
 num_retrieval_author_reviews = query_int(query)
 
+num_non_author_llm_reviews = num_llm_reviews - num_llm_author_reviews
+num_non_author_retrieval_reviews = num_retrieval_reviews - num_retrieval_author_reviews
+
 print(f"├ LLM: {num_llm_reviews} ({num_llm_reviews / num_reviews:.2%})")
-print(f"├─ Author: {num_llm_author_reviews}")
-print(f"├─ Non-author: {num_llm_reviews - num_llm_author_reviews}")
+print(
+    f"├─ Author: {num_llm_author_reviews} ({num_llm_author_reviews/num_llm_reviews:.2%})"
+)
+print(
+    f"├─ Non-author: {num_non_author_llm_reviews} ({num_non_author_llm_reviews/num_llm_reviews:.2%})"
+)
 print(
     f"├ Retrieval: {num_retrieval_reviews} ({num_retrieval_reviews / num_reviews:.2%})"
 )
-print(f"├─ Author: {num_retrieval_author_reviews}")
-print(f"└─ Non-author: {num_retrieval_reviews - num_retrieval_author_reviews}")
+print(
+    f"├─ Author: {num_retrieval_author_reviews} ({num_retrieval_author_reviews/num_retrieval_reviews:.2%})"
+)
+print(
+    f"└─ Non-author: {num_non_author_retrieval_reviews} ({num_non_author_retrieval_reviews / num_retrieval_reviews:.2%})"
+)
 
 query = """
 select AVG(review_count) from (
@@ -310,41 +370,11 @@ for review_type, total_posts in [("retrieval", num_posts), ("llm", num_llm_posts
 
 # Average scores for LLM
 query_print_averages(LLM_COLS, "llm_reviews")
+graph_reviews(LLM_COLS, "llm_reviews", "LLM")
+
 # Average scores for retrieval
 query_print_averages(RETRIEVAL_COLS, "retrieval_reviews")
-
-
-def graph_review_count(
-    review_counts: Iterable[int],
-    title: str,
-    buckets: list[tuple[int, int]] | None = None,
-) -> None:
-    counter = BucketCounter(review_counts, buckets)
-
-    num_counted_users = counter.total()
-    # counter["0"] = num_users - num_counted_users
-
-    labels, counts = counter.sorted_items()
-
-    def autopct_func(percent: float):
-        count = round(percent / 100 * num_counted_users)
-        return f"{percent:1.2f}% ({count})"
-
-    _ = plt.pie(
-        counts,
-        labels=labels,
-        autopct=autopct_func,
-        pctdistance=0.75,
-        wedgeprops=dict(linewidth=1, edgecolor="w"),
-        textprops=dict(fontsize=6),
-    )
-    _ = plt.title(title)
-    plt.savefig(OUT_DIR / f"{title}.png")
-
-    if SHOW_GRAPHS:
-        plt.show()
-
-    plt.close()
+graph_reviews(RETRIEVAL_COLS, "retrieval_reviews", "Retrieval")
 
 
 query = """
@@ -484,6 +514,9 @@ prmatrix(llm_retrieval_reviews, "Review Statistics", "llm-and-retrieval-reviews.
 # - LLM helpfulness<->relevance is also high
 # TODO: Talk to Dr. Back about this
 
+# Is the LLM covering for us when we get poor retrieval stats?
+# Graph average retrieval relevance vs helpfulness and see what spread is like - is it linear? Clustered?
+
 query = """
 SELECT 
     COALESCE(r1.review_count, 0) as retrieval_reviews, 
@@ -520,7 +553,7 @@ for data, name, bucket in [
     print("- Average per user:", np.average(data))
     print("- Stddev per user:", np.std(data))
 
-    graph_review_count(
+    pie_chart(
         data,
         f"Number of {name} Reviews Per User",
         bucket,
@@ -617,6 +650,8 @@ llm_gen_df = pd.read_sql(query, conn, index_col=["post_id", "author"])
 # Remove the single outlier (network issues)
 llm_gen_df = llm_gen_df[llm_gen_df["total_time"] < 3]
 
+prmatrix(llm_gen_df, "LLM Time vs Ratings", "llm-time-vs-ratings.txt")
+
 print("### LLM total time info")
 for col in LLM_COLS:
     x = llm_gen_df["total_time"]
@@ -657,6 +692,8 @@ query = """
     order by p.retrieval_time asc
 """
 retrieval_gen_df = pd.read_sql(query, conn, index_col=["post_id", "author"])
+
+prmatrix(retrieval_gen_df, "Retrieval Time vs Ratings", "retrieval-time-vs-ratings.txt")
 
 print("### Retrieval time info")
 for col in RETRIEVAL_COLS:
