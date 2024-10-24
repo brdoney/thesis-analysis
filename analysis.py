@@ -1,21 +1,16 @@
 import sqlite3
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Any  # type: ignore[reportAny]
 
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import scipy.stats as stats
 import seaborn as sns
 
 from bucketcounter import BucketCounter
-
-plt.style.use("seaborn-v0_8-paper")
-
-matplotlib.rcParams["figure.dpi"] = 300
-matplotlib.rcParams["savefig.bbox"] = "tight"
+from constants import OUT_DIR
 
 conn = sqlite3.connect("./linkdata.db")
 # SHOW_GRAPHS = True
@@ -23,9 +18,6 @@ SHOW_GRAPHS = False
 
 RETRIEVAL_COLS = ["relevance", "helpfulness"]
 LLM_COLS = RETRIEVAL_COLS + ["correctness"]
-
-OUT_DIR = Path("./out")
-OUT_DIR.mkdir(exist_ok=True)
 
 # Possible options for each category
 HELPFULNESS_OPTIONS = [2, 1, 0, -1, -2]
@@ -225,7 +217,7 @@ plt.close()
 
 
 print("### Per Post")
-print("Average link clicks per post (overall CTR):", num_clicks / num_posts)
+print("Average link clicks per post (overall CTR):", num_clicks / (num_posts * 4))
 # If we think of this as a click-through rate, it's better than ads, but still
 # not good for an educational tool (I would have expected ~50%)
 query_print(
@@ -235,12 +227,12 @@ query_print(
 # This isn't that much higher than 1, suggesting that users aren't clicking
 # multiple links often at all, even if they've clicked one. So either our link
 # relevance or previews are good, or link relevance is trash.
-llm_ctr = llm_clicks / num_llm_posts
-retrieval_ctr = retrieval_clicks / num_retrieval_posts
+llm_ctr = llm_clicks / (num_llm_posts * 4)
+retrieval_ctr = retrieval_clicks / (num_retrieval_posts * 4)
 print("Average clicks per LLM post (LLM CTR):", llm_ctr)
 # So LLM CTR is bringing down the average CTR, not that it matters much given
 # how low it is
-print("Average clicks per Retrieval post (retrieval CTR):", retrieval_ctr)
+print("Average clicks per retrieval-only post (retrieval CTR):", retrieval_ctr)
 # Number of clicks is similarly low for each post, with a slight edge going to
 # retrieval posts (which makes sense, given that's all they do). Still, the
 # difference is small enough to reflect a disinterest in links/satisfaction
@@ -249,7 +241,7 @@ print("Average clicks per Retrieval post (retrieval CTR):", retrieval_ctr)
 # snippets if users do not clicks the links themselves.
 
 retrieval_relative_ctr = retrieval_ctr / llm_ctr
-print(f"Retrieval CTR is {retrieval_relative_ctr:.3f}x better than LLM CTR")
+print(f"Retrieval-only CTR is {retrieval_relative_ctr:.3f}x better than LLM CTR")
 # Unfortunately, there's no way to track how many students actually used (just reviewed)
 # with the LLM response, so it is possible that many of them generated it
 # simply to have it. As in, it's better to have it than not, even if it's bad.
@@ -484,8 +476,9 @@ def prmatrix(df: pd.DataFrame, graph_title: str, out_filename: str):
 
     plt.close()
 
-    _ = sns.heatmap(accept_rvalues, cmap="Greens", vmin=0)
-    _ = plt.title(f"{graph_title} Filtered R-values")
+    # _ = sns.heatmap(accept_rvalues, cmap="Greens", vmin=0)
+    _ = sns.heatmap(accept_rvalues, vmin=0)
+    _ = plt.title(f"{graph_title} R-values")
     _ = plt.xticks(rotation=45, ha="right")
     plt.savefig(OUT_DIR / f"{graph_title} R-values.png")
 
@@ -534,8 +527,79 @@ prmatrix(llm_retrieval_reviews, "Review Statistics", "llm-and-retrieval-reviews.
 # - LLM helpfulness<->relevance is also high
 # TODO: Talk to Dr. Back about this
 
+query = """
+SELECT 
+    -- LLM
+    lr.helpfulness as `LLM Helpfulness`, 
+    lr.relevance as `LLM Relevance`, 
+    lr.correctness as `LLM Correctness`
+FROM llm_reviews lr WHERE lr.correctness = 0;
+"""
+zero_reviews = pd.read_sql(query, conn)
+print(zero_reviews.mean())
+print(zero_reviews.mode())
+
+
+def series_range(series: "pd.Series[int]") -> npt.NDArray[np.int_]:
+    return np.arange(series.min(), series.max() + 1, step=1)
+
+def boxplot(df: pd.DataFrame, x: str, y: str) -> None:
+    # meanprops = dict(markerfacecolor="C1")
+    fig = sns.catplot(
+        df,
+        x=x,
+        y=y,
+        kind="violin",
+        bw_adjust=0.5,
+        linewidth=1,
+        # kind="box",
+        # showmeans=True,
+        # meanprops=meanprops,
+    )
+    # _ = sns.pointplot(
+    #     df,
+    #     x=x,
+    #     y=y,
+    #     estimator=np.mean,
+    #     linestyle="none",
+    #     ax=fig.ax,
+    #     color="C1",
+    # )
+
+    title = f"{x} vs {y}"
+    _ = plt.title(title)
+    plt.savefig(OUT_DIR / f"{title}.png")
+
+    if SHOW_GRAPHS:
+        plt.show()
+
+    plt.close(fig.figure)
+
+    # Bubble version of the same chart
+    counted = df.groupby([x, y]).size().reset_index(name="count")
+    counted_range: tuple[int, int] = (counted["count"].min(), counted["count"].max())
+    scale = 5
+    sizes = (scale * counted_range[0], scale * counted_range[1])
+
+    _ = sns.scatterplot(counted, x=x, y=y, size="count", sizes=sizes, legend=False)
+
+    plt.xticks(series_range(counted[x]))
+    plt.yticks(series_range(counted[y]))
+
+    _ = plt.title(title)
+    plt.savefig(OUT_DIR / f"{title} bubble.png")
+    if SHOW_GRAPHS:
+        plt.show()
+    plt.close()
+
+
 # Is the LLM covering for us when we get poor retrieval stats?
-# Graph average retrieval relevance vs helpfulness and see what spread is like - is it linear? Clustered?
+# Graph average retrieval relevance vs LLM helpfulness and see what spread is like - is it linear? Clustered?
+# print(len(llm_retrieval_reviews))
+boxplot(llm_retrieval_reviews, "Retrieval Relevance", "LLM Helpfulness")
+# boxplot(llm_retrieval_reviews, "LLM Correctness", "LLM Helpfulness")
+boxplot(llm_retrieval_reviews, "LLM Relevance", "LLM Helpfulness")
+
 
 query = """
 SELECT 
@@ -601,21 +665,25 @@ for name, df, cols in [
     ("Retrieval", retrieval_df, RETRIEVAL_COLS),
 ]:
     averages = []
-    for i in range(len(df) - WINDOW_LEN + 1):
+    start_i = int(len(df) / 3)
+    for i in range(start_i, len(df) - WINDOW_LEN + 1):
         rows = df[i : i + WINDOW_LEN][cols]
         averages.append(rows.mean())
     window_averages = pd.DataFrame(averages)
+    window_averages["window_start"] = pd.Series(range(start_i, len(df) - WINDOW_LEN + 1))
+    window_averages = window_averages.set_index("window_start")
 
     ax = window_averages.plot(
         title=f"Rolling Average of {WINDOW_LEN} Reviews",
         ylabel="Average Value",
         xlabel="Window Start Index",
         xticks=range(
-            0, len(window_averages), WINDOW_LEN
+            window_averages.index[0], window_averages.index[-1], WINDOW_LEN
         ),  # Set xticks every WIDNOW_LEN points
     )
 
     print(f"T-test and p-values for {name} rolling averages:")
+    r_values = {}
     for i, col in enumerate(cols):
         overall_average = df[col].mean()
         t_stat, p_value = stats.ttest_1samp(window_averages[col], overall_average)
@@ -636,6 +704,12 @@ for name, df, cols in [
         color = ax.get_lines()[i].get_color()
         y = linreg.slope * window_averages.index + linreg.intercept
         ax.plot(window_averages.index, y, color=color, linestyle="dashed")
+
+        r_values[col] = linreg.rvalue
+
+    handles, labels = ax.get_legend_handles_labels()
+    new_labels = [f"{col.title()} (r={r_values[column]:.2f})" for column, col in zip(df.columns, cols)]
+    _ = ax.legend(handles, new_labels)
 
     plt.savefig(OUT_DIR / f"Rolling Avg {name}.png")
 
