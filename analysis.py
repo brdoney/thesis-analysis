@@ -511,7 +511,7 @@ SELECT
     lr.correctness as `LLM Correctness`, 
     -- Retrieval
     rr.relevance as `Retrieval Relevance`, 
-    rr.helpfulness as `Retrieval helpfulness`
+    rr.helpfulness as `Retrieval Helpfulness`
 FROM llm_reviews lr
 JOIN retrieval_reviews rr ON lr.post_id = rr.post_id;
 """
@@ -660,12 +660,14 @@ retrieval_df = pd.read_sql(  # pyright: ignore[reportUnknownMemberType]
 )
 
 WINDOW_LEN = 100
-for name, df, cols in [
-    ("LLM", llm_df, LLM_COLS),
-    ("Retrieval", retrieval_df, RETRIEVAL_COLS),
+for name, df, cols, skip_first in [
+    ("LLM", llm_df, LLM_COLS, 0),
+    ("LLM", llm_df, LLM_COLS, 1/3),
+    ("Retrieval", retrieval_df, RETRIEVAL_COLS, 0),
+    ("Retrieval", retrieval_df, RETRIEVAL_COLS, 1/3),
 ]:
     averages = []
-    start_i = int(len(df) / 3)
+    start_i = int(skip_first * len(df))
     for i in range(start_i, len(df) - WINDOW_LEN + 1):
         rows = df[i : i + WINDOW_LEN][cols]
         averages.append(rows.mean())
@@ -673,8 +675,10 @@ for name, df, cols in [
     window_averages["window_start"] = pd.Series(range(start_i, len(df) - WINDOW_LEN + 1))
     window_averages = window_averages.set_index("window_start")
 
+    skip_str = "" if skip_first == 0 else " Skipping First Third"
+
     ax = window_averages.plot(
-        title=f"Rolling Average of {WINDOW_LEN} Reviews",
+        title=f"Rolling Average of {WINDOW_LEN} {name} Reviews{skip_str}",
         ylabel="Average Value",
         xlabel="Window Start Index",
         xticks=range(
@@ -682,7 +686,7 @@ for name, df, cols in [
         ),  # Set xticks every WIDNOW_LEN points
     )
 
-    print(f"T-test and p-values for {name} rolling averages:")
+    print(f"T-test and p-values for {name} rolling averages{skip_str.lower()}:")
     r_values = {}
     for i, col in enumerate(cols):
         overall_average = df[col].mean()
@@ -692,8 +696,8 @@ for name, df, cols in [
         )
 
         alternative = "greater"
-        # This combo is the only negative slope
-        if name == "Retrieval" and col == "relevance":
+        # Retrieval relevance is negative only when the full data is used
+        if skip_first != 0 and name == "Retrieval" and col == "relevance":
             alternative = "less"
 
         linreg = stats.linregress(
@@ -711,7 +715,7 @@ for name, df, cols in [
     new_labels = [f"{col.title()} (r={r_values[column]:.2f})" for column, col in zip(df.columns, cols)]
     _ = ax.legend(handles, new_labels)
 
-    plt.savefig(OUT_DIR / f"Rolling Avg {name}.png")
+    plt.savefig(OUT_DIR / f"Rolling Avg {name}{skip_str}.png")
 
     if SHOW_GRAPHS:
         plt.show()
