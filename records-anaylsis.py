@@ -8,6 +8,7 @@ import pandas as pd
 import seaborn as sns
 
 from constants import OUT_DIR
+from fits import fit_log, fit_zipf
 
 chunk_title_pat = re.compile(r".+% ([^\s]+)(?: - page (\d+))?")
 
@@ -128,18 +129,19 @@ class_counts = df.groupby("doc_class").size()
 print(class_counts)
 type_counts = df.groupby("doc_type").size()
 print(type_counts)
-chunk_counts = df.groupby("chunk_id").size().sort_values()
-doc_counts = df.groupby("document").size().sort_values()
+chunk_counts = df.groupby("chunk_id").size().sort_values(ascending=False)
+doc_counts = df.groupby("document").size().sort_values(ascending=False)
 document_scores = df[["document", "score"]].groupby("document").mean()
 
 # Show the top 10 chunks
 # Turns out the tip top are rules from final PDFs, then they're real chunks from project 4 stuff
-for i in range(1, 11):
-    print(f"==== Top {i} Chunk ====\n", chunk_lookup[chunk_counts.index[-i]])
+# for i in range(1, 11):
+#     print(f"==== Top {i} Chunk ====\n", chunk_lookup[chunk_counts.index[-i]])
 
 # Show the top 10 documents
-for i in range(1, 11):
-    print(f"Top {i} Document:", doc_counts.index[-i], doc_counts.iloc[-i])
+# for i in range(1, 11):
+#     print(f"Top {i} Document:", doc_counts.index[-i], doc_counts.iloc[-i])
+
 
 # Counts for each chunk - are there spikes? -> bar chart
 _ = chunk_counts.plot(
@@ -150,8 +152,13 @@ _ = chunk_counts.plot(
     xticks=[],
     width=1,
 )
+# fit_zipf(chunk_counts)
+# fit_zipfian(chunk_counts)
+# fit_exponential(chunk_counts)
+fit_log(chunk_counts)
 plt.savefig(OUT_DIR / "Resource Chunks.png")
 plt.close()
+
 
 # Counts for each document - are there spikes? -> bar chart
 _ = doc_counts.plot(
@@ -162,6 +169,10 @@ _ = doc_counts.plot(
     xticks=[],
     width=1,
 )
+fit_zipf(doc_counts)
+# fit_zipfian(chunk_counts)
+# fit_exponential(doc_counts)
+# fit_log(doc_counts)
 plt.savefig(OUT_DIR / "Resource Documents.png")
 plt.close()
 
@@ -216,6 +227,10 @@ plt.ylabel("Similarity")
 plt.xlabel("")
 plt.savefig(OUT_DIR / "Cosine Similarity.png")
 plt.close()
+
+# How many chunks are higher value than the documents they come from? What
+# percentage of a document on average is like this?
+# What do the type numbers mean? Why are they so much higher than the highest recommended documents?
 
 # Type of resource vs ratings
 # Type of resource vs CTR
