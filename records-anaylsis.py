@@ -1,5 +1,6 @@
 import json
 import re
+import sqlite3
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -7,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-from constants import OUT_DIR
+from constants import LLM_COLS, OUT_DIR, RETRIEVAL_COLS
 from fits import fit_log, fit_zipf
 
 chunk_title_pat = re.compile(r".+% ([^\s]+)(?: - page (\d+))?")
@@ -16,6 +17,49 @@ chunks: dict[str, int] = {}
 new_chunk_id = 0
 
 suffixes: set[str] = set()
+
+
+def get_suffix(document_name: str) -> str:
+    document = Path(document_name)
+    suffix = document.suffix
+    if suffix == "":
+        suffix = ".html"
+    return suffix.removeprefix(".")
+
+
+def get_suffix_type(document_name: str, link: str) -> str:
+    projects = [
+        "/projects/project1",
+        "/projects/project2",
+        "/projects/project3",
+        "/projects/project4",
+        "/documents/fuzz",
+        "/projects/helpsessions/cush",
+        "/projects/helpsessions/threadpool",
+        "/projects/helpsessions/malloclab",
+        "/projects/cush-handout.pdf",
+        "/projects/threadpool-handout.pdf",
+        "/projects/malloclab-cs3214.pdf",
+        "/projects/pserver-handout.pdf",
+    ]
+    unit_tests = ["server_unit_test_pserv.py", "server_bench.py"]
+
+    test_parts = ["Test1", "Test_1", "Test_2", "Midterm", "Final"]
+    if any(part in document_name for part in test_parts):
+        return "Exams"
+    elif link.startswith("https://git.cs.vt.edu/cs3214-staff/cs3214-videos"):
+        return "Lecture Code Examples"
+    elif link.startswith("https://git.cs.vt.edu/cs3214-staff"):
+        if document_name in unit_tests:
+            return "Project Unit Tests"
+        else:
+            return "Project Code"
+    elif any(part in link for part in projects):
+        return "Project Documentation"
+    elif get_suffix(document_name) in ["html", "md", "pptx", "pdf"]:
+        return "Lecture Material"
+    else:
+        raise ValueError(f"Invalid resource {document_name}")
 
 
 class ChunkInfo(NamedTuple):
@@ -44,53 +88,15 @@ class ChunkInfo(NamedTuple):
         if m is None:
             raise ValueError(f"Unable to extract info from title '{title}'")
 
-        # {'', '.rep', '.html', '.txt', '.c', '.s', '.h', '.pptx', '.sh', '.py', '.java', '.md', '.pdf'}
         document, page_number_str = m.groups(default=None)
         if document is None or (page_number_str is None and ".pdf" in title):
             raise ValueError(f"Unable to extract info from title '{title}'")
 
         page_number = int(page_number_str) if page_number_str else None
 
-        document_file = Path(document)
-        suffix = document_file.suffix
-        if suffix == "":
-            suffix = ".html"
-        suffix = suffix.removeprefix(".")
-
-        projects = [
-            "/projects/project1",
-            "/projects/project2",
-            "/projects/project3",
-            "/projects/project4",
-            "/documents/fuzz",
-            "/projects/helpsessions/cush",
-            "/projects/helpsessions/threadpool",
-            "/projects/helpsessions/malloclab",
-            "/projects/cush-handout.pdf",
-            "/projects/threadpool-handout.pdf",
-            "/projects/malloclab-cs3214.pdf",
-            "/projects/pserver-handout.pdf",
-        ]
-        unit_tests = ["server_unit_test_pserv.py", "server_bench.py"]
-
-        test_parts = ["Test1", "Test_1", "Test_2", "Midterm", "Final"]
-        if any(part in document for part in test_parts):
-            suffix_type = "Exams"
-        elif link.startswith("https://git.cs.vt.edu/cs3214-staff/cs3214-videos"):
-            suffix_type = "Lecture Code Examples"
-        elif link.startswith("https://git.cs.vt.edu/cs3214-staff"):
-            if document in unit_tests:
-                suffix_type = "Project Unit Tests"
-            else:
-                suffix_type = "Project Code"
-        elif any(part in link for part in projects):
-            suffix_type = "Project Documentation"
-        elif suffix in ["html", "md", "pptx", "pdf"]:
-            suffix_type = "Lecture Material"
-        else:
-            raise ValueError(f"Invalid resource {document}")
-
-        suffixes.add(document_file.suffix)
+        suffix = get_suffix(document)
+        suffixes.add(suffix)
+        suffix_type = get_suffix_type(document, link)
 
         return ChunkInfo(
             post_id, chunk_id, document, suffix, suffix_type, score, page_number
@@ -132,6 +138,19 @@ print(type_counts)
 chunk_counts = df.groupby("chunk_id").size().sort_values(ascending=False)
 doc_counts = df.groupby("document").size().sort_values(ascending=False)
 document_scores = df[["document", "score"]].groupby("document").mean()
+
+# PDFs are by far the highest, so here:
+# type_doc_counts = (
+#     df.groupby(["document", "doc_type"])
+#     .size()
+#     .sort_values(ascending=False)
+#     .to_frame("size")
+#     .reset_index()
+# )
+# pdfs = type_doc_counts[type_doc_counts["doc_type"] == "pdf"]
+# print("Summary", pdfs, len(pdfs), pdfs["size"].sum())
+# Print documents of types with low recommendations
+# print(type_doc_counts[type_doc_counts["doc_type"].isin(["s", "rep", "txt", "java", "pptx"])])
 
 # Show the top 10 chunks
 # Turns out the tip top are rules from final PDFs, then they're real chunks from project 4 stuff
@@ -228,9 +247,85 @@ plt.xlabel("")
 plt.savefig(OUT_DIR / "Cosine Similarity.png")
 plt.close()
 
-# How many chunks are higher value than the documents they come from? What
-# percentage of a document on average is like this?
-# What do the type numbers mean? Why are they so much higher than the highest recommended documents?
+document_scores_dict = dict(zip(document_scores.index, document_scores["score"]))
+df["above_doc"] = df[["document", "score"]].apply(
+    lambda row: document_scores_dict[row["document"]] > row["score"], axis=1
+)
+num_above = df["above_doc"].sum()
+num_below = len(df) - num_above
+print(f"Chunks above: {num_above/len(df):.2%} ({num_above})")
+print(f"Chunks below: {num_below/len(df):.2%} ({num_below})")
+
+# How many queries were the Python driver files included in?
+num_posts = df["post_id"].nunique()
+document_counts = df.groupby("document")["post_id"].nunique()
+num_unit_test_posts = document_counts.loc["server_unit_test_pserv.py"]
+print(
+    f"Posts with unit tests: {(num_unit_test_posts / num_posts):.2%} ({num_unit_test_posts})"
+)
+avg_post_per_file = document_counts.mean()
+print(
+    f"Average posts per file: {(avg_post_per_file / num_posts):.2%} {avg_post_per_file}"
+)
+
+# What was the average number of times it was recommended per post?
+doc_counts_per_post = (
+    df.groupby(["post_id", "document"]).size().reset_index(name="count")
+)
+grouped = doc_counts_per_post.groupby("document")["count"].sum() / num_posts
+sorted_doc_counts = grouped.sort_values(ascending=False)
+print(sorted_doc_counts)
+
+# Average number of times it was included in posts where it was included at least once?
+average_counts = (
+    doc_counts_per_post.groupby("document")["count"].mean().sort_values(ascending=False)
+)
+print(
+    "Number links to unit tests by posts with unit tests at least once:",
+    average_counts.loc["server_unit_test_pserv.py"],
+)
 
 # Type of resource vs ratings
+conn = sqlite3.connect("./linkdata.db")
+
+# Minimum number of rows to be included in the graph
+ROW_MIN_THRESHOLD = 10
+
+for table, rating_cols, title in [
+    ("retrieval_reviews", RETRIEVAL_COLS, "Retrieval"),
+    ("llm_reviews", LLM_COLS, "LLM"),
+]:
+    ret_df = pd.read_sql(f"select * from {table}", conn)
+    rows = []
+    for doc_type in df["doc_type"].unique():
+        posts_with_doc_type = df[df["doc_type"] == doc_type]["post_id"].unique()
+
+        # Skip types with fewer rows than the threshold
+        if len(posts_with_doc_type) < ROW_MIN_THRESHOLD:
+            continue
+
+        reviews_with_doc_type = ret_df["post_id"].isin(posts_with_doc_type)
+        avgs = ret_df[reviews_with_doc_type][rating_cols].mean()
+        avgs["doc_type"] = doc_type
+        rows.append(avgs)
+        # print(f"==={doc_type}===")
+        # print(avgs)
+
+    doc_type_avg_df = pd.DataFrame(rows)
+    doc_type_avg_df.dropna(inplace=True)
+    print(doc_type_avg_df)
+
+    ax = doc_type_avg_df.set_index("doc_type")[rating_cols].plot(kind="bar")
+
+    # Draw reference line at y=0 (not necessary after filtering doc types based on ROW_MIN_THRESHOLD)
+    # ax.axhline(y=0, color="gray", linewidth=0.8, linestyle="--")
+
+    plt.xlabel("Document Type")
+    plt.ylabel("Metric Average")
+    plt.title(f"{title} Metrics Averages for Each Document Type")
+    plt.xticks(rotation=45)
+    plt.legend(title="Metric")
+    plt.savefig(OUT_DIR / f"{title} Filetype Average.png")
+    plt.close()
+
 # Type of resource vs CTR
