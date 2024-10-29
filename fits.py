@@ -3,6 +3,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 from scipy import stats
 from scipy.optimize import curve_fit
 

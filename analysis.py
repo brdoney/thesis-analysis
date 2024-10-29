@@ -10,27 +10,11 @@ import scipy.stats as stats
 import seaborn as sns
 
 from bucketcounter import BucketCounter
-from constants import OUT_DIR
+from constants import LLM_COLS, OUT_DIR, RATINGS_OPTIONS, RATINGS_RANGES, RETRIEVAL_COLS
 
 conn = sqlite3.connect("./linkdata.db")
 # SHOW_GRAPHS = True
 SHOW_GRAPHS = False
-
-RETRIEVAL_COLS = ["relevance", "helpfulness"]
-LLM_COLS = RETRIEVAL_COLS + ["correctness"]
-
-# Possible options for each category
-HELPFULNESS_OPTIONS = [2, 1, 0, -1, -2]
-CORRECTNESS_OPTIONS = [3, 2, 1, 0, -1, -2, -3]
-RELEVANCE_OPTIONS = [2, 1, 0, -1, -2]
-RATINGS_OPTIONS = {
-    "relevance": RELEVANCE_OPTIONS,
-    "correctness": CORRECTNESS_OPTIONS,
-    "helpfulness": HELPFULNESS_OPTIONS,
-}
-RATINGS_RANGES = {
-    name: (min(vals), max(vals)) for name, vals in RATINGS_OPTIONS.items()
-}
 
 
 def query_list(query: str) -> list[Any]:
