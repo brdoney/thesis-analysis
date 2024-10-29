@@ -543,6 +543,7 @@ print(zero_reviews.mode())
 def series_range(series: "pd.Series[int]") -> npt.NDArray[np.int_]:
     return np.arange(series.min(), series.max() + 1, step=1)
 
+
 def boxplot(df: pd.DataFrame, x: str, y: str) -> None:
     # meanprops = dict(markerfacecolor="C1")
     fig = sns.catplot(
@@ -662,9 +663,9 @@ retrieval_df = pd.read_sql(  # pyright: ignore[reportUnknownMemberType]
 WINDOW_LEN = 100
 for name, df, cols, skip_first in [
     ("LLM", llm_df, LLM_COLS, 0),
-    ("LLM", llm_df, LLM_COLS, 1/3),
+    ("LLM", llm_df, LLM_COLS, 1 / 3),
     ("Retrieval", retrieval_df, RETRIEVAL_COLS, 0),
-    ("Retrieval", retrieval_df, RETRIEVAL_COLS, 1/3),
+    ("Retrieval", retrieval_df, RETRIEVAL_COLS, 1 / 3),
 ]:
     averages = []
     start_i = int(skip_first * len(df))
@@ -672,7 +673,9 @@ for name, df, cols, skip_first in [
         rows = df[i : i + WINDOW_LEN][cols]
         averages.append(rows.mean())
     window_averages = pd.DataFrame(averages)
-    window_averages["window_start"] = pd.Series(range(start_i, len(df) - WINDOW_LEN + 1))
+    window_averages["window_start"] = pd.Series(
+        range(start_i, len(df) - WINDOW_LEN + 1)
+    )
     window_averages = window_averages.set_index("window_start")
 
     skip_str = "" if skip_first == 0 else " Skipping First Third"
@@ -712,7 +715,10 @@ for name, df, cols, skip_first in [
         r_values[col] = linreg.rvalue
 
     handles, labels = ax.get_legend_handles_labels()
-    new_labels = [f"{col.title()} (r={r_values[column]:.2f})" for column, col in zip(df.columns, cols)]
+    new_labels = [
+        f"{col.title()} (r={r_values[column]:.2f})"
+        for column, col in zip(df.columns, cols)
+    ]
     _ = ax.legend(handles, new_labels)
 
     plt.savefig(OUT_DIR / f"Rolling Avg {name}{skip_str}.png")
@@ -823,3 +829,45 @@ for col in RETRIEVAL_COLS:
 # So the closest to being statistically significant is helpfulness, which had a
 # p-value of 0.066. But ultimately, none of the lines here are statistically
 # significant, which makes sense for the same reasons as for the LLMs.
+
+# User timeline plot: show vertical bars with a unique color for each user each time they post
+# We don't have exact timestamps, but user IDs show relative order, so it still works as a timeline
+query = "SELECT author from posts p"
+authors_df = pd.read_sql(query, conn)
+author_order = {
+    author: idx for idx, author in enumerate(authors_df["author"].drop_duplicates())
+}
+authors_df["ordered_author"] = authors_df["author"].map(author_order)
+authors_df["height"] = 1
+print(authors_df)
+ax = sns.barplot(
+    authors_df,
+    x=authors_df.index,
+    y="height",
+    hue="ordered_author",
+    width=1,
+    palette="rocket",
+)
+
+# Max out bar height (since we want to fill all space)
+plt.ylim(0, 1)
+
+# Hide ticks, since they don't mean anything
+plt.xticks([])
+plt.yticks([])
+
+# Override seaborn's labels
+plt.ylabel("")
+plt.xlabel("Post ID")
+
+# Swap the legend for a colorbar
+ax.get_legend().remove()
+norm = plt.Normalize(
+    authors_df["ordered_author"].min(), authors_df["ordered_author"].max()
+)
+cmap = sns.color_palette("rocket", as_cmap=True)
+sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+ax.figure.colorbar(sm, ax=ax, location="top", label="Author's First Post ID")
+
+plt.savefig(OUT_DIR / "User Timeline.png")
+plt.close()
