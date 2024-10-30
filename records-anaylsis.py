@@ -285,6 +285,19 @@ print(
     average_counts.loc["server_unit_test_pserv.py"],
 )
 
+
+# How many times does a post repeat a document on average?
+reps_per_post = doc_counts_per_post[["post_id", "count"]].groupby("post_id").max()
+avg_reps_per_post = reps_per_post["count"].mean()
+print(f"Average document repetitions per post: {avg_reps_per_post}")
+
+# How many documents are there per post on average?
+docs_per_post = (
+    doc_counts_per_post.groupby("post_id").size().reset_index(name="num_docs")
+)
+avg_docs_per_post = docs_per_post["num_docs"].mean()
+print(f"Average num document per post: {avg_docs_per_post}")
+
 # Type of resource vs ratings
 conn = sqlite3.connect("./linkdata.db")
 
