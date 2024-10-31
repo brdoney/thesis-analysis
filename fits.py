@@ -27,15 +27,14 @@ def fit_exponential(series: "pd.Series[int]") -> None:
     )  # p0 is the initial guess for [a, b]
 
     res = exponential(x_data, *params)
+    r2_value = r2(y_data, res)
     plt.plot(
         x_data - 1,
         res,
         color="yellow",
-        label=f"$y = {params[0]:.2f} e^{{{params[1]:.2f}x}}$",
+        label=f"$y = {params[0]:.2f} e^{{{params[1]:.2f}x}}$, $R^2={r2_value:0.3f}$",
     )
     plt.legend()
-
-    print("Exponential", r2(y_data, res))
 
 
 def fit_zipf(series: "pd.Series[int]") -> None:
@@ -52,10 +51,14 @@ def fit_zipf(series: "pd.Series[int]") -> None:
     )  # Initial guess for parameter `a`
 
     res = zipf_function(x_data, params[0])
-    plt.plot(x_data - 1, res, color="red", label=f"Zipf: $a = {params[0]:.2f}$")
+    r2_value = r2(y_data, res)
+    plt.plot(
+        x_data - 1,
+        res,
+        color="red",
+        label=f"Zipf: $a = {params[0]:.2f}$, $R^2={r2_value:0.3f}$",
+    )
     plt.legend()
-
-    print("Zipf", r2(y_data, res))
 
 
 def fit_zipfian(series: "pd.Series[int]") -> None:
@@ -74,10 +77,14 @@ def fit_zipfian(series: "pd.Series[int]") -> None:
     )  # Initial guess for parameter `a`
 
     res = zipf_function(x_data, params[0])
-    plt.plot(x_data - 1, res, color="purple", label=f"Zipfian: $a = {params[0]:.2f}$")
+    r2_value = r2(y_data, res)
+    plt.plot(
+        x_data - 1,
+        res,
+        color="purple",
+        label=f"Zipfian: $a = {params[0]:.2f}$, $R^2={r2_value:0.3f}$",
+    )
     plt.legend()
-
-    print("Zipfian", r2(y_data, res))
 
 
 def fit_log(series: "pd.Series[int]") -> None:
@@ -91,12 +98,31 @@ def fit_log(series: "pd.Series[int]") -> None:
     )  # Initial guess for parameter `a`
 
     res = logarithmic(x_data, *params)
+    r2_value = r2(y_data, res)
     plt.plot(
         x_data - 1,
         res,
         color="red",
-        label=f"$y = {params[0]:.2f}+ {params[1]:.2f}\\log{{x}}+{params[2]:.2f}\\log^2{{x}}$",
+        label=f"$y = {params[0]:.2f}+ {params[1]:.2f}\\log{{x}}+{params[2]:.2f}\\log^2{{x}}$, $R^2={r2_value:0.3f}$",
     )
     plt.legend()
 
-    print("Log", r2(y_data, res))
+def fit_neglog(series: "pd.Series[int]") -> None:
+    def logarithmic(x, a, b):
+        return a + b * np.log(x)
+
+    x_data = np.arange(len(series)) + 1
+    y_data = series.values
+    params, _ = curve_fit(
+        logarithmic, x_data, y_data, p0=[1, 1]
+    )  # Initial guess for parameter `a`
+
+    res = logarithmic(x_data, *params)
+    r2_value = r2(y_data, res)
+    plt.plot(
+        x_data - 1,
+        res,
+        color="red",
+        label=f"$y = {params[0]:.2f}+ {params[1]:.2f}\\log{{x}}$, $R^2={r2_value:0.3f}$",
+    )
+    plt.legend()
