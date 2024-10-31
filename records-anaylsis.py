@@ -2,6 +2,7 @@ import json
 import re
 import sqlite3
 from pathlib import Path
+import sys
 from typing import Any, NamedTuple
 
 import matplotlib.pyplot as plt
@@ -9,7 +10,7 @@ import pandas as pd
 import seaborn as sns
 
 from constants import LLM_COLS, OUT_DIR, RETRIEVAL_COLS
-from fits import fit_log, fit_neglog, fit_zipf
+from fits import fit_logpoly, fit_log, fit_zipf
 
 chunk_title_pat = re.compile(r".+% ([^\s]+)(?: - page (\d+))?")
 
@@ -161,6 +162,17 @@ document_scores = df[["document", "score"]].groupby("document").mean()
 # for i in range(1, 11):
 #     print(f"Top {i} Document:", doc_counts.index[-i], doc_counts.iloc[-i])
 
+# chunk_id vs. times recommended seems logarithmic (relatively straight line on a logx graph)
+# chunk_counts.plot(
+#     kind="bar",
+#     title="Recommended Chunks",
+#     xlabel="Chunk",
+#     ylabel="Times Recommended",
+#     xticks=[],
+#     width=1,
+#     logx=True,
+# )
+# plt.show()
 
 # Counts for each chunk - are there spikes? -> bar chart
 _ = chunk_counts.plot(
@@ -174,8 +186,8 @@ _ = chunk_counts.plot(
 # fit_zipf(chunk_counts)
 # fit_zipfian(chunk_counts)
 # fit_exponential(chunk_counts)
-# fit_log(chunk_counts)
-fit_neglog(chunk_counts)
+# fit_logpoly(chunk_counts)
+fit_log(chunk_counts)
 plt.savefig(OUT_DIR / "Resource Chunks.png")
 plt.close()
 
@@ -192,7 +204,7 @@ _ = doc_counts.plot(
 fit_zipf(doc_counts)
 # fit_zipfian(chunk_counts)
 # fit_exponential(doc_counts)
-# fit_log(doc_counts)
+# fit_logpoly(doc_counts)
 plt.savefig(OUT_DIR / "Resource Documents.png")
 plt.close()
 

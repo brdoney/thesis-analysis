@@ -87,7 +87,7 @@ def fit_zipfian(series: "pd.Series[int]") -> None:
     plt.legend()
 
 
-def fit_log(series: "pd.Series[int]") -> None:
+def fit_logpoly(series: "pd.Series[int]") -> None:
     def logarithmic(x, a, b, c):
         return a + b * np.log(x) + c * np.log(x) ** 2
 
@@ -107,7 +107,7 @@ def fit_log(series: "pd.Series[int]") -> None:
     )
     plt.legend()
 
-def fit_neglog(series: "pd.Series[int]") -> None:
+def fit_log(series: "pd.Series[int]") -> None:
     def logarithmic(x, a, b):
         return a + b * np.log(x)
 
