@@ -9,7 +9,7 @@ import pandas as pd
 import seaborn as sns
 
 from constants import LLM_COLS, OUT_DIR, RETRIEVAL_COLS
-from fits import fit_log, fit_zipf
+from fits import fit_log, fit_neglog, fit_zipf
 
 chunk_title_pat = re.compile(r".+% ([^\s]+)(?: - page (\d+))?")
 
@@ -133,7 +133,7 @@ chunk_lookup: dict[int, str] = {chunk_id: chunk for chunk, chunk_id in chunks.it
 # Counts for each class - how distributed are they?
 class_counts = df.groupby("doc_class").size()
 print(class_counts)
-type_counts = df.groupby("doc_type").size()
+type_counts = df.groupby("doc_type").size().sort_values(ascending=False)
 print(type_counts)
 chunk_counts = df.groupby("chunk_id").size().sort_values(ascending=False)
 doc_counts = df.groupby("document").size().sort_values(ascending=False)
@@ -174,7 +174,8 @@ _ = chunk_counts.plot(
 # fit_zipf(chunk_counts)
 # fit_zipfian(chunk_counts)
 # fit_exponential(chunk_counts)
-fit_log(chunk_counts)
+# fit_log(chunk_counts)
+fit_neglog(chunk_counts)
 plt.savefig(OUT_DIR / "Resource Chunks.png")
 plt.close()
 
@@ -196,12 +197,13 @@ plt.savefig(OUT_DIR / "Resource Documents.png")
 plt.close()
 
 # Counts for each type - how distributed are they?
-_ = type_counts.plot(
+ax = type_counts.plot(
     kind="bar",
     title="Recommended Resource Types",
     xlabel="Resource Type",
     ylabel="Times Recommended",
 )
+plt.bar_label(ax.containers[0])
 plt.savefig(OUT_DIR / "Resource Types.png")
 plt.close()
 # So it's mostly recommending PDFs (assignment specs + slides + help sessions),
@@ -209,16 +211,26 @@ plt.close()
 # then webpages (FAQs and instructions for ex5)
 # then C files (p4 assignment code)
 
+# Pie chart version of the resource type bar chart
+ax = type_counts.plot(
+    kind="pie", labels=None, title="Recommended Resource Types", radius=1.2
+)
+labels = [f"{doc_type} - {num}" for doc_type, num in type_counts.items()]
+# Honestly idek why but this puts it to the left of the pie chart
+plt.legend(ax.patches, labels, loc="center left", bbox_to_anchor=(1, 0.5), fontsize=8)
+plt.savefig(OUT_DIR / "Resource Types Pie.png")
+plt.close()
+
 class_counts.plot(kind="pie", title="Recommended Resource Categories", autopct="%.2f%%")
 plt.savefig(OUT_DIR / "Resource Categories.png")
 plt.close()
 # So code and documentation are about even, all in all, and there's a pretty even spread overall
 
-# Distribution for score -> violin plot or box/whisker
-
+# Similarity overview stats info
 print("Average chunk similarity:", df["score"].mean())
 print("Average doc similarity:", document_scores["score"].mean())
 
+# Distribution for score -> violin plot or box/whisker
 _ = sns.violinplot(df, y="score", linewidth=1, bw_adjust=0.5)
 plt.title("Chunk Cosine Similarity")
 plt.ylabel("Cosine Similarity")
@@ -258,14 +270,14 @@ print(f"Chunks below: {num_below/len(df):.2%} ({num_below})")
 
 # How many queries were the Python driver files included in?
 num_posts = df["post_id"].nunique()
-document_counts = df.groupby("document")["post_id"].nunique()
-num_unit_test_posts = document_counts.loc["server_unit_test_pserv.py"]
+num_posts_per_doc = df.groupby("document")["post_id"].nunique()
+num_unit_test_posts = num_posts_per_doc.loc["server_unit_test_pserv.py"]
 print(
     f"Posts with unit tests: {(num_unit_test_posts / num_posts):.2%} ({num_unit_test_posts})"
 )
-avg_post_per_file = document_counts.mean()
+avg_post_per_file = num_posts_per_doc.mean()
 print(
-    f"Average posts per file: {(avg_post_per_file / num_posts):.2%} {avg_post_per_file}"
+    f"Average posts per file: {(avg_post_per_file / num_posts):.2%} ({avg_post_per_file})"
 )
 
 # What was the average number of times it was recommended per post?
@@ -274,6 +286,7 @@ doc_counts_per_post = (
 )
 grouped = doc_counts_per_post.groupby("document")["count"].sum() / num_posts
 sorted_doc_counts = grouped.sort_values(ascending=False)
+print("Repetitions per post:")
 print(sorted_doc_counts)
 
 # Average number of times it was included in posts where it was included at least once?
