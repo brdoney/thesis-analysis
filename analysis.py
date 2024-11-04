@@ -240,6 +240,22 @@ print(
 )
 # So students VASTLY prefer to see the LLM's answer
 
+query = """
+SELECT count(*)
+FROM users u
+WHERE EXISTS (
+    SELECT 1
+    FROM posts p
+    WHERE p.author = u.id
+)
+AND u.consent="TRUE";
+"""
+num_posted_users = query_int(query)
+print(
+    f"Num users who posted at least once: {num_posted_users / num_users:.2%} ({num_posted_users})"
+)
+# So not all the students actually made a post, some just reviewed
+
 query_print(
     "Posts per user who posted at least once",
     "select avg(post_count) from (select count(*) as post_count from posts group by author)",
@@ -628,6 +644,11 @@ for data, name, bucket in [
         bucket,
     )
 
+num_1plus_users = sum(1 for review in num_total_reviews_by_user if review >= 1)
+print(
+    f"Number of users with 1 or more total reviews: {num_1plus_users} ({num_1plus_users / num_users:.2%})"
+)
+
 num_5plus_users = sum(1 for review in num_total_reviews_by_user if review >= 5)
 print(
     f"Number of users with 5 or more total reviews: {num_5plus_users} ({num_5plus_users / num_users:.2%})"
@@ -823,7 +844,6 @@ author_order = {
 }
 authors_df["ordered_author"] = authors_df["author"].map(author_order)
 authors_df["height"] = 1
-print(authors_df)
 ax = sns.barplot(
     authors_df,
     x=authors_df.index,
@@ -855,3 +875,12 @@ ax.figure.colorbar(sm, ax=ax, location="top", label="Author's First Post ID")
 
 plt.savefig(OUT_DIR / "User Timeline.png")
 plt.close()
+
+first_indices = authors_df.groupby("ordered_author")["ordered_author"].apply(lambda x: x.index[0])
+last_indices = authors_df.groupby("ordered_author")["ordered_author"].apply(lambda x: x.index[-1])
+
+# Calculate the distance
+post_distances = last_indices - first_indices
+print(
+    f"Post distance info: μ={post_distances.mean()} σ={post_distances.std()}, median={post_distances.median()}"
+)
