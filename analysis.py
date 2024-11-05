@@ -876,11 +876,21 @@ ax.figure.colorbar(sm, ax=ax, location="top", label="Author's First Post ID")
 plt.savefig(OUT_DIR / "User Timeline.png")
 plt.close()
 
-first_indices = authors_df.groupby("ordered_author")["ordered_author"].apply(lambda x: x.index[0])
-last_indices = authors_df.groupby("ordered_author")["ordered_author"].apply(lambda x: x.index[-1])
+first_indices = authors_df.groupby("ordered_author")["ordered_author"].apply(
+    lambda x: x.index[0]
+)
+last_indices = authors_df.groupby("ordered_author")["ordered_author"].apply(
+    lambda x: x.index[-1]
+)
 
 # Calculate the distance
 post_distances = last_indices - first_indices
 print(
     f"Post distance info: μ={post_distances.mean()} σ={post_distances.std()}, median={post_distances.median()}"
 )
+sns.violinplot(post_distances, bw_adjust=0.5, linewidth=1)
+plt.title("Distance Between User's First and Last Posts")
+plt.ylabel("First and Last Post Distance")
+plt.xticks([])
+plt.savefig(OUT_DIR / "User Post Distance.png")
+plt.close()
