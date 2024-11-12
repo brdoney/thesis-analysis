@@ -241,25 +241,35 @@ print(
 # So students VASTLY prefer to see the LLM's answer
 
 query = """
-SELECT count(*)
+SELECT u.id, COUNT(p.id) AS post_count
 FROM users u
-WHERE EXISTS (
-    SELECT 1
-    FROM posts p
-    WHERE p.author = u.id
-)
-AND u.consent="TRUE";
+LEFT JOIN posts p ON p.author = u.id
+WHERE u.consent="TRUE"
+GROUP BY u.id;
 """
-num_posted_users = query_int(query)
+posts_per_user_df = pd.read_sql(query, conn)
+post_counts = posts_per_user_df["post_count"]
+num_posted_users = (post_counts >= 1).sum()
+num_5posted_users = (post_counts >= 5).sum()
 print(
     f"Num users who posted at least once: {num_posted_users / num_users:.2%} ({num_posted_users})"
 )
 # So not all the students actually made a post, some just reviewed
-
-query_print(
-    "Posts per user who posted at least once",
-    "select avg(post_count) from (select count(*) as post_count from posts group by author)",
+print(
+    f"Num users who posted at least 5 times: {num_5posted_users / num_users:.2%} ({num_5posted_users})"
 )
+print(
+    f"Posts per user: μ={post_counts.mean()} σ={post_counts.std()} med={post_counts.median()}"
+)
+ax = sns.violinplot(post_counts, bw_adjust=0.5, linewidth=1)
+plt.setp(ax.collections, alpha=0.75)
+plt.title("Questions Per User")
+plt.ylabel("# Questions")
+plt.xticks([])
+plt.savefig(OUT_DIR / "Posts Per User.png")
+plt.close()
+
+print("Posts per user who posted at least once", post_counts[post_counts >= 1].mean())
 
 print("Posts per user", num_posts / num_users)
 
@@ -305,6 +315,26 @@ print(
 )
 
 query = """
+SELECT AVG(review_count)
+FROM (
+    SELECT post_id, COUNT(*) AS review_count
+    FROM (
+        SELECT p.id AS post_id
+        FROM posts p
+        JOIN llm_reviews lr ON p.id = lr.post_id
+
+        UNION ALL
+
+        SELECT p.id AS post_id
+        FROM posts p
+        JOIN retrieval_reviews rr ON p.id = rr.post_id
+    )
+    GROUP BY post_id
+);
+"""
+query_print("Average reviews per post", query)
+
+query = """
 select AVG(review_count) from (
     select COUNT(*) as review_count from llm_reviews group by post_id
 )
@@ -340,6 +370,7 @@ print(
     f"Percent posts with >=1 review: {percent_reviewed_posts:.2%} ({num_reviewed_posts})"
 )
 
+
 for review_type, total_posts in [("retrieval", num_posts), ("llm", num_llm_posts)]:
     query = f"""
     SELECT COUNT(DISTINCT post_id)
@@ -363,7 +394,9 @@ for review_type, total_posts in [("retrieval", num_posts), ("llm", num_llm_posts
     percent_author_reviewed = num_author_reviewed / total_posts
     print(
         f"Percent {review_type} posts with an author review: {percent_author_reviewed:.2%} ({num_author_reviewed})"
+        f" | {num_author_reviewed / num_reviewed_posts:.2%} of reviewed posts"
     )
+
     query = f"""
     SELECT COUNT(*) from (
         SELECT COUNT(DISTINCT p.id) FROM posts p
@@ -372,12 +405,12 @@ for review_type, total_posts in [("retrieval", num_posts), ("llm", num_llm_posts
         HAVING COUNT(*) = 1 AND r.author = p.author
     )
     """
-
     num_sole_author_reviewed = query_int(query)
-    num_non_author_reviewed = num_reviewed_posts - num_sole_author_reviewed
+    # num_non_author_reviewed = num_reviewed_posts - num_sole_author_reviewed
     percent_sole_author_reviewed = num_sole_author_reviewed / total_posts
     print(
         f"Percent {review_type} posts with sole author review: {percent_sole_author_reviewed:.2%} ({num_sole_author_reviewed})"
+        f" | {num_sole_author_reviewed / num_reviewed_posts:.2%} of reviewed posts"
     )
 
 # Average scores for LLM
@@ -638,11 +671,53 @@ for data, name, bucket in [
     print("- Average per user:", np.average(data))
     print("- Stddev per user:", np.std(data))
 
-    pie_chart(
-        data,
-        f"Number of {name} Reviews Per User",
-        bucket,
+    title = f"Number of {name} Reviews Per User"
+
+    pie_chart(data, title, bucket)
+
+    counts_df = pd.Series(data).value_counts().sort_index()
+    ax = counts_df.plot(
+        kind="bar",
+        title=title,
+        xlabel="Number of Reviews",
+        ylabel="Number of Students",
+        rot=0,
     )
+    plt.bar_label(ax.containers[0])
+    plt.savefig(OUT_DIR / f"{title} Barplot.png")
+    plt.close()
+
+# This isn't super useful since a student may have low reviews in one category
+# but high in another, and this doesn't show that. In other words, there's
+# really no "two parts of a whole" here like in a normal stacked bar chart
+# ret_num_reviews_series = (
+#     pd.Series(num_retrieval_reviews_by_user).value_counts().sort_index()
+# )
+# llm_num_reviews_series = pd.Series(num_llm_reviews_by_user).value_counts().sort_index()
+# num_reviews_vals = np.union1d(
+#     ret_num_reviews_series.index, llm_num_reviews_series.index
+# )
+#
+# num_reviews_df = pd.DataFrame(
+#     {
+#         "LLM Reviews": llm_num_reviews_series.reindex(num_reviews_vals, fill_value=0),
+#         "Retrieval Reviews": ret_num_reviews_series.reindex(
+#             num_reviews_vals, fill_value=0
+#         ),
+#     },
+#     index=num_reviews_vals,
+# )
+# title = "Number of Total Reviews Per Student"
+# ax = num_reviews_df.plot(
+#     kind="bar",
+#     title=title,
+#     xlabel="Number of Reviews",
+#     ylabel="Number of Students",
+#     stacked=True,
+#     rot=0,
+# )
+# plt.savefig(OUT_DIR / f"{title} Stacked.png")
+# plt.close()
 
 num_1plus_users = sum(1 for review in num_total_reviews_by_user if review >= 1)
 print(
@@ -888,7 +963,8 @@ post_distances = last_indices - first_indices
 print(
     f"Post distance info: μ={post_distances.mean()} σ={post_distances.std()}, median={post_distances.median()}"
 )
-sns.violinplot(post_distances, bw_adjust=0.5, linewidth=1)
+ax = sns.violinplot(post_distances, bw_adjust=0.5, linewidth=1)
+plt.setp(ax.collections, alpha=0.75)
 plt.title("Distance Between User's First and Last Posts")
 plt.ylabel("First and Last Post Distance")
 plt.xticks([])

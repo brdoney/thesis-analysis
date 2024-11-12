@@ -214,6 +214,7 @@ ax = type_counts.plot(
     title="Recommended Resource Types",
     xlabel="Resource Type",
     ylabel="Times Recommended",
+    rot=0,
 )
 plt.bar_label(ax.containers[0])
 plt.savefig(OUT_DIR / "Resource Types.png")
