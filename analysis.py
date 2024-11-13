@@ -138,7 +138,11 @@ num_retrieval_reviews = query_int("select count(*) from retrieval_reviews")
 num_reviews = num_llm_reviews + num_retrieval_reviews
 print(f"Num reviews: {num_reviews}")
 
-num_clicks = query_int("select count(*) from clicks")
+# Have to make sure the post for a click wasn't deleted, as this would indicate
+# consent was revoked (forgot to `on delete cascade` it)
+num_clicks = query_int(
+    "select count(*) from clicks c inner join posts p on c.post_id = p.id"
+)
 print("Total link clicks", num_clicks)
 
 print("\n## Link clicks")
@@ -158,6 +162,26 @@ print("├ LLM:", llm_clicks)
 print("├ Retrieval:", retrieval_clicks)
 print("└ Deleted post:", deleted_clicks)
 # So most link clicks are on LLM posts (because of the volume)
+
+# Get the list of links clicked by each user
+clicked_links = query_list("SELECT DISTINCT link FROM clicks")
+print("Number of unique links clicked:", len(clicked_links))
+
+clicked_links_by_user = pd.read_sql("SELECT link, user_id FROM clicks", conn).groupby(
+    "user_id"
+)
+clicked_links_sizes = clicked_links_by_user.size().sort_values()
+
+with open(OUT_DIR / "clicked links.txt", "w") as f:
+    f.write("\n".join((link for (link,) in clicked_links)))
+    f.write("\n\n")
+
+    # Write each users' clicked links, sorted by number of clicked links
+    for group_name in clicked_links_sizes.index:
+        group_df = clicked_links_by_user.get_group(group_name)
+        f.write(f"User {group_name} (Rows: {len(group_df)})\n")
+        f.write("\n".join(group_df["link"]))
+        f.write("\n\n")
 
 print("Clicks per user", num_clicks / num_users)
 # So users definitely aren't clicking many links
@@ -679,7 +703,7 @@ for data, name, bucket in [
     ax = counts_df.plot(
         kind="bar",
         title=title,
-        xlabel="Number of Reviews",
+        xlabel=f"Number of {name} Reviews",
         ylabel="Number of Students",
         rot=0,
     )
@@ -958,6 +982,7 @@ last_indices = authors_df.groupby("ordered_author")["ordered_author"].apply(
     lambda x: x.index[-1]
 )
 
+print("\nUser Timeline")
 # Calculate the distance
 post_distances = last_indices - first_indices
 print(
