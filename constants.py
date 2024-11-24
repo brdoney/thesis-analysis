@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 OUT_DIR = Path("./out")
 OUT_DIR.mkdir(exist_ok=True)
 
+SURVEY_DIR = Path("./survey")
+
 plt.style.use("seaborn-v0_8-paper")
 matplotlib.rcParams["figure.dpi"] = 300
 matplotlib.rcParams["savefig.bbox"] = "tight"

@@ -184,3 +184,6 @@ pyrightconfig.json
 # Output
 out/
 
+# Survey data
+survey/
+
