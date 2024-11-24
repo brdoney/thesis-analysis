@@ -23,18 +23,18 @@ def fit_exponential(series: "pd.Series[int]") -> None:
         x_data,
         y_data,
         p0=(1, -0.1),
-        bounds=([-np.inf, -10], [np.inf, -0.0001]),
+        bounds=([-np.inf, -np.inf], [np.inf, -0.0001]),
     )  # p0 is the initial guess for [a, b]
 
     res = exponential(x_data, *params)
     r2_value = r2(y_data, res)
-    plt.plot(
+    line = plt.plot(
         x_data - 1,
         res,
         color="yellow",
         label=f"$y = {params[0]:.2f} e^{{{params[1]:.2f}x}}$, $R^2={r2_value:0.3f}$",
     )
-    plt.legend()
+    plt.legend(handles=line)
 
 
 def fit_zipf(series: "pd.Series[int]") -> None:
@@ -52,13 +52,13 @@ def fit_zipf(series: "pd.Series[int]") -> None:
 
     res = zipf_function(x_data, params[0])
     r2_value = r2(y_data, res)
-    plt.plot(
+    line = plt.plot(
         x_data - 1,
         res,
         color="red",
         label=f"Zipf: $a = {params[0]:.2f}$, $R^2={r2_value:0.3f}$",
     )
-    plt.legend()
+    plt.legend(handles=line)
 
 
 def fit_zipfian(series: "pd.Series[int]") -> None:
@@ -78,13 +78,13 @@ def fit_zipfian(series: "pd.Series[int]") -> None:
 
     res = zipf_function(x_data, params[0])
     r2_value = r2(y_data, res)
-    plt.plot(
+    line = plt.plot(
         x_data - 1,
         res,
         color="purple",
         label=f"Zipfian: $a = {params[0]:.2f}$, $R^2={r2_value:0.3f}$",
     )
-    plt.legend()
+    plt.legend(handles=line)
 
 
 def fit_logpoly(series: "pd.Series[int]") -> None:
@@ -99,13 +99,13 @@ def fit_logpoly(series: "pd.Series[int]") -> None:
 
     res = logarithmic(x_data, *params)
     r2_value = r2(y_data, res)
-    plt.plot(
+    line = plt.plot(
         x_data - 1,
         res,
         color="red",
         label=f"$y = {params[0]:.2f}+ {params[1]:.2f}\\log{{x}}+{params[2]:.2f}\\log^2{{x}}$, $R^2={r2_value:0.3f}$",
     )
-    plt.legend()
+    plt.legend(handles=line)
 
 def fit_log(series: "pd.Series[int]") -> None:
     def logarithmic(x, a, b):
@@ -119,10 +119,10 @@ def fit_log(series: "pd.Series[int]") -> None:
 
     res = logarithmic(x_data, *params)
     r2_value = r2(y_data, res)
-    plt.plot(
+    line = plt.plot(
         x_data - 1,
         res,
         color="red",
         label=f"$y = {params[0]:.2f}+ {params[1]:.2f}\\log{{x}}$, $R^2={r2_value:0.3f}$",
     )
-    plt.legend()
+    plt.legend(handles=line)
