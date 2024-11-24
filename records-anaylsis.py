@@ -2,7 +2,6 @@ import json
 import re
 import sqlite3
 from pathlib import Path
-import sys
 from typing import Any, NamedTuple
 
 import matplotlib.pyplot as plt
@@ -10,7 +9,7 @@ import pandas as pd
 import seaborn as sns
 
 from constants import LLM_COLS, OUT_DIR, RETRIEVAL_COLS
-from fits import fit_logpoly, fit_log, fit_zipf
+from fits import *
 
 chunk_title_pat = re.compile(r".+% ([^\s]+)(?: - page (\d+))?")
 
@@ -130,6 +129,11 @@ df = pd.DataFrame(rows)
 print(df)
 
 chunk_lookup: dict[int, str] = {chunk_id: chunk for chunk, chunk_id in chunks.items()}
+print(df[["chunk_id", "document"]])
+document_lookup: dict[int, str] = {
+    chunk_id: document
+    for chunk_id, document in df[["chunk_id", "document"]].itertuples(index=False)
+}
 
 # Counts for each class - how distributed are they?
 class_counts = df.groupby("doc_class").size()
@@ -155,12 +159,29 @@ document_scores = df[["document", "score"]].groupby("document").mean()
 
 # Show the top 10 chunks
 # Turns out the tip top are rules from final PDFs, then they're real chunks from project 4 stuff
-# for i in range(1, 11):
-#     print(f"==== Top {i} Chunk ====\n", chunk_lookup[chunk_counts.index[-i]])
+with open(OUT_DIR / "Top Chunks.txt", "w") as f:
+    for i in range(0, 10):
+        chunk_id = chunk_counts.index[i]
+        chunk_recs = chunk_counts.iloc[i]
+        chunk_content = chunk_lookup[chunk_id]
+        print(
+            f"==== Top {i} Chunk | id={chunk_id} #recs={chunk_recs} ====\n",
+            chunk_content,
+            file=f,
+        )
 
 # Show the top 10 documents
-# for i in range(1, 11):
-#     print(f"Top {i} Document:", doc_counts.index[-i], doc_counts.iloc[-i])
+
+with open(OUT_DIR / "Top Documents.txt", "w") as f:
+    for i in range(1, 11):
+        print(f"Top {i} Document:", doc_counts.index[-i], doc_counts.iloc[-i], file=f)
+
+    f.write("\n")
+
+    top_docs = doc_counts.iloc[:10].reset_index(name="count")
+    top_docs["description"] = "placeholder"
+    top_docs["document"] = "\\verb|" + top_docs["document"] + "|"
+    f.write(top_docs.to_latex(index=False))
 
 # chunk_id vs. times recommended seems logarithmic (relatively straight line on a logx graph)
 # chunk_counts.plot(
@@ -173,6 +194,7 @@ document_scores = df[["document", "score"]].groupby("document").mean()
 #     logx=True,
 # )
 # plt.show()
+
 
 # Counts for each chunk - are there spikes? -> bar chart
 _ = chunk_counts.plot(
@@ -208,6 +230,34 @@ fit_zipf(doc_counts)
 plt.savefig(OUT_DIR / "Resource Documents.png")
 plt.close()
 
+# Stacked chunk bar chart (takes a LONG time b/c of the number of chunks)
+# chunk_counts_df = chunk_counts.reset_index(name="count")
+# chunk_counts_df["document"] = chunk_counts_df["chunk_id"].map(document_lookup)
+#
+# pivot_df = chunk_counts_df.pivot(
+#     index="document", columns="chunk_id", values="count"
+# ).fillna(0)
+#
+# # Sort by document type total
+# pivot_df = pivot_df.reindex(doc_counts.index)
+#
+# # Plot the stacked bar chart
+# ax = pivot_df.plot(
+#     kind="bar",
+#     stacked=True,
+#     title="Recommended Documents",
+#     xlabel="Document",
+#     ylabel="Times Recommended",
+#     xticks=[],
+#     width=1,
+#     legend=False,
+# )
+# fit_zipf(doc_counts)
+#
+# plt.savefig(OUT_DIR / "Resource Documents Stacked.png")
+# plt.close()
+
+
 # Counts for each type - how distributed are they?
 ax = type_counts.plot(
     kind="bar",
@@ -223,6 +273,43 @@ plt.close()
 # then Python files (test drivers -> students asking about why they're failing tests)
 # then webpages (FAQs and instructions for ex5)
 # then C files (p4 assignment code)
+
+# Stacked version of types graph (takes a while)
+# doc_counts_df = doc_counts.reset_index(name="count")
+# doc_counts_df["doc_type"] = doc_counts_df["document"].apply(get_suffix)
+#
+# pivot_df = doc_counts_df.pivot(
+#     index="doc_type", columns="document", values="count"
+# ).fillna(0)
+#
+# # Sort by document type total
+# pivot_df = pivot_df.reindex(type_counts.index)
+#
+# # Plot the stacked bar chart
+# ax = pivot_df.plot(
+#     kind="bar",
+#     stacked=True,
+#     title="Recommended Resource Types",
+#     xlabel="Resource Type",
+#     ylabel="Times Recommended",
+#     rot=0,
+#     legend=False,
+# )
+#
+# # Bar labels (can't use ax.bar_label b/c it's stacked with an uneven number per bar)
+# for idx, total in enumerate(type_counts):
+#     ax.text(
+#         idx,
+#         total,  # Position above the bar
+#         str(total),  # Text is the total count
+#         ha="center",
+#         va="bottom",
+#         fontsize=10,
+#         color="black",
+#     )
+#
+# plt.savefig(OUT_DIR / "Resource Types Stacked.png")
+# plt.close()
 
 # Pie chart version of the resource type bar chart
 ax = type_counts.plot(
@@ -315,7 +402,11 @@ print(
 # How many times does a post repeat a document on average?
 reps_per_post = doc_counts_per_post[["post_id", "count"]].groupby("post_id").max()
 avg_reps_per_post = reps_per_post["count"].mean()
-print(f"Average document repetitions per post: {avg_reps_per_post}")
+std_reps_per_post = reps_per_post["count"].std()
+med_reps_per_post = reps_per_post["count"].median()
+print(
+    f"Document repetitions per post: μ={avg_reps_per_post} σ={std_reps_per_post}, median={med_reps_per_post}"
+)
 
 # How many documents are there per post on average?
 docs_per_post = (
