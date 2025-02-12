@@ -18,6 +18,11 @@ new_chunk_id = 0
 
 suffixes: set[str] = set()
 
+# Whether to generate the chart of file types with separate colors per document (takes a while)
+STACKED_TYPES = False
+# Whether to generate the chart of chunks with separate colors per document (takes a LONG time)
+STACKED_CHUNKS = False
+
 
 def get_suffix(document_name: str) -> str:
     document = Path(document_name)
@@ -144,7 +149,7 @@ chunk_counts = df.groupby("chunk_id").size().sort_values(ascending=False)
 doc_counts = df.groupby("document").size().sort_values(ascending=False)
 document_scores = df[["document", "score"]].groupby("document").mean()
 
-# PDFs are by far the highest, so here:
+# Print top docs of a particular type (i.e. PDFs):
 # type_doc_counts = (
 #     df.groupby(["document", "doc_type"])
 #     .size()
@@ -156,6 +161,15 @@ document_scores = df[["document", "score"]].groupby("document").mean()
 # print("Summary", pdfs, len(pdfs), pdfs["size"].sum())
 # Print documents of types with low recommendations
 # print(type_doc_counts[type_doc_counts["doc_type"].isin(["s", "rep", "txt", "java", "pptx"])])
+# Print top docs of a particular class:
+# class_doc_counts = (
+#     df.groupby(["document", "doc_class"])
+#     .size()
+#     .sort_values(ascending=False)
+#     .to_frame("size")
+#     .reset_index()
+# )
+# print(class_doc_counts[class_doc_counts["doc_class"].isin(["Lecture Material"])])
 
 # Show the top 10 chunks
 # Turns out the tip top are rules from final PDFs, then they're real chunks from project 4 stuff
@@ -231,31 +245,32 @@ plt.savefig(OUT_DIR / "Resource Documents.png")
 plt.close()
 
 # Stacked chunk bar chart (takes a LONG time b/c of the number of chunks)
-# chunk_counts_df = chunk_counts.reset_index(name="count")
-# chunk_counts_df["document"] = chunk_counts_df["chunk_id"].map(document_lookup)
-#
-# pivot_df = chunk_counts_df.pivot(
-#     index="document", columns="chunk_id", values="count"
-# ).fillna(0)
-#
-# # Sort by document type total
-# pivot_df = pivot_df.reindex(doc_counts.index)
-#
-# # Plot the stacked bar chart
-# ax = pivot_df.plot(
-#     kind="bar",
-#     stacked=True,
-#     title="Recommended Documents",
-#     xlabel="Document",
-#     ylabel="Times Recommended",
-#     xticks=[],
-#     width=1,
-#     legend=False,
-# )
-# fit_zipf(doc_counts)
-#
-# plt.savefig(OUT_DIR / "Resource Documents Stacked.png")
-# plt.close()
+if STACKED_CHUNKS:
+    chunk_counts_df = chunk_counts.reset_index(name="count")
+    chunk_counts_df["document"] = chunk_counts_df["chunk_id"].map(document_lookup)
+
+    pivot_df = chunk_counts_df.pivot(
+        index="document", columns="chunk_id", values="count"
+    ).fillna(0)
+
+    # Sort by document type total
+    pivot_df = pivot_df.reindex(doc_counts.index)
+
+    # Plot the stacked bar chart
+    ax = pivot_df.plot(
+        kind="bar",
+        stacked=True,
+        title="Recommended Documents",
+        xlabel="Document",
+        ylabel="Times Recommended",
+        xticks=[],
+        width=1,
+        legend=False,
+    )
+    fit_zipf(doc_counts)
+
+    plt.savefig(OUT_DIR / "Resource Documents Stacked.png")
+    plt.close()
 
 
 # Counts for each type - how distributed are they?
@@ -275,41 +290,42 @@ plt.close()
 # then C files (p4 assignment code)
 
 # Stacked version of types graph (takes a while)
-# doc_counts_df = doc_counts.reset_index(name="count")
-# doc_counts_df["doc_type"] = doc_counts_df["document"].apply(get_suffix)
-#
-# pivot_df = doc_counts_df.pivot(
-#     index="doc_type", columns="document", values="count"
-# ).fillna(0)
-#
-# # Sort by document type total
-# pivot_df = pivot_df.reindex(type_counts.index)
-#
-# # Plot the stacked bar chart
-# ax = pivot_df.plot(
-#     kind="bar",
-#     stacked=True,
-#     title="Recommended Resource Types",
-#     xlabel="Resource Type",
-#     ylabel="Times Recommended",
-#     rot=0,
-#     legend=False,
-# )
-#
-# # Bar labels (can't use ax.bar_label b/c it's stacked with an uneven number per bar)
-# for idx, total in enumerate(type_counts):
-#     ax.text(
-#         idx,
-#         total,  # Position above the bar
-#         str(total),  # Text is the total count
-#         ha="center",
-#         va="bottom",
-#         fontsize=10,
-#         color="black",
-#     )
-#
-# plt.savefig(OUT_DIR / "Resource Types Stacked.png")
-# plt.close()
+if STACKED_TYPES:
+    doc_counts_df = doc_counts.reset_index(name="count")
+    doc_counts_df["doc_type"] = doc_counts_df["document"].apply(get_suffix)
+
+    pivot_df = doc_counts_df.pivot(
+        index="doc_type", columns="document", values="count"
+    ).fillna(0)
+
+    # Sort by document type total
+    pivot_df = pivot_df.reindex(type_counts.index)
+
+    # Plot the stacked bar chart
+    ax = pivot_df.plot(
+        kind="bar",
+        stacked=True,
+        title="Recommended Resource Types",
+        xlabel="Resource Type",
+        ylabel="Times Recommended",
+        rot=0,
+        legend=False,
+    )
+
+    # Bar labels (can't use ax.bar_label b/c it's stacked with an uneven number per bar)
+    for idx, total in enumerate(type_counts):
+        ax.text(
+            idx,
+            total,  # Position above the bar
+            str(total),  # Text is the total count
+            ha="center",
+            va="bottom",
+            fontsize=10,
+            color="black",
+        )
+
+    plt.savefig(OUT_DIR / "Resource Types Stacked.png")
+    plt.close()
 
 # Pie chart version of the resource type bar chart
 ax = type_counts.plot(
