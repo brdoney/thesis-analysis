@@ -209,32 +209,78 @@ with open(OUT_DIR / "Top Documents.txt", "w") as f:
 # )
 # plt.show()
 
-
 # Counts for each chunk - are there spikes? -> bar chart
 _ = chunk_counts.plot(
     kind="bar",
     title="Recommended Chunks",
-    xlabel="Chunk",
+    xlabel="Chunk ID",
     ylabel="Times Recommended",
-    xticks=[],
+    xticks=np.arange(0, len(chunk_counts), 100),
+    rot=0,
     width=1,
 )
 # fit_zipf(chunk_counts)
 # fit_zipfian(chunk_counts)
 # fit_exponential(chunk_counts)
 # fit_logpoly(chunk_counts)
-fit_log(chunk_counts)
+# fit_log(chunk_counts)
 plt.savefig(OUT_DIR / "Resource Chunks.png")
 plt.close()
 
+# Same chunk vs. count plot, but with colouring only for top 10 documents
+top10_docs_list = doc_counts.head(10).index.to_list()
+top10_docs = set(top10_docs_list)
+colored_chunks = (
+    df.groupby(["chunk_id", "document"])
+    .size()
+    .sort_values(ascending=False)
+    .reset_index(name="Count")
+)
+colored_chunks["Top Document"] = colored_chunks.apply(
+    lambda row: row["document"] if row["document"] in top10_docs else "Other", axis=1
+)
+# Ensure that other gets the dark blue color, since it's the majority of the bars
+top10_docs_list.insert(0, "Other")
+colors = [
+    "#1f78b4",
+    "#a6cee3",
+    "#b2df8a",
+    "#33a02c",
+    "#fb9a99",
+    "#e31a1c",
+    "#fdbf6f",
+    "#ff7f00",
+    "#cab2d6",
+    "#6a3d9a",
+    "#ffff99",
+]
+c = dict(zip(top10_docs_list, colors))
+# Now plot it
+sns.barplot(
+    colored_chunks,
+    x=colored_chunks.index,
+    y="Count",
+    hue="Top Document",
+    palette=c,
+    width=1,
+    # For the presentation:
+    # legend=False,
+)
+plt.xticks(np.arange(0, len(colored_chunks), 100))
+plt.title("Recommended Chunks")
+plt.xlabel("Chunk ID")
+plt.ylabel("Times Recommended")
+plt.savefig(OUT_DIR / "Resource Chunks Top 10 Colored.png")
+plt.close()
 
 # Counts for each document - are there spikes? -> bar chart
 _ = doc_counts.plot(
     kind="bar",
     title="Recommended Documents",
-    xlabel="Document",
+    xlabel="Document ID",
     ylabel="Times Recommended",
-    xticks=[],
+    xticks=np.arange(0, len(doc_counts), 25),
+    rot=0,
     width=1,
 )
 fit_zipf(doc_counts)
